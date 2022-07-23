@@ -5,7 +5,7 @@ from osgeo import ogr
 import os
 import numpy as np
 import csv
-
+import pandas as pd
 
 def boundingBoxToOffsets(bbox, geot):
     col1 = int((bbox[0] - geot[0]) / geot[1])
@@ -27,7 +27,8 @@ def geotFromOffsets(row_offset, col_offset, geot):
     return new_geot
 
 
-def setFeatureStats(fid, min, max, mean, median, sd, sum, count, names=["min", "max", "mean", "median", "sd", "sum", "count", "id"]):
+def setFeatureStats(fid, min, max, mean, median, sd, sum, count, centroid, area, bbox, \
+                    names=["min", "max", "mean", "median", "sd", "sum", "count", "centroid", "area", "bbox", "id"]):
     featstats = {
     names[0]: min,
     names[1]: max,
@@ -36,17 +37,26 @@ def setFeatureStats(fid, min, max, mean, median, sd, sum, count, names=["min", "
     names[4]: sd,
     names[5]: sum,
     names[6]: count,
-    names[7]: fid,
+    names[7]: centroid,
+    names[8]: area,
+    names[9]: bbox,
+    names[10]: fid,
     }
     return featstats
 
+def convertDtypeValues(raster, lambda_func, conversion_factor ):
+    '''Converting Formula to translate bewteen different data types'''
+    raster_conv = lambda_func(raster, conversion_factor)
+    return raster_conv
 
+def zonalStatistics(fn_raster, fn_zones, band = 1, adjust_func = None, adjust_value = None, band_name = None, flight_date = None, flight_number = None, shadow = None, fn_csv = None):
+    '''All credit for the original code goes to Konrad Hafen
+    https://opensourceoptions.com/blog/zonal-statistics-algorithm-with-python-in-4-steps/'''
 
-def zonalStatistics(fn_raster, fn_zones, fn_csv = None):
     # fn_raster = filename for raster data object
     # fn_zones = filename for shapefile for regions
     # fn_csv = filename for csv write out, if none is provided data is returned
-
+    # both datasets needs to be in the same CRS
 
     mem_driver = ogr.GetDriverByName("Memory")
     mem_driver_gdal = gdal.GetDriverByName("MEM")
@@ -60,7 +70,15 @@ def zonalStatistics(fn_raster, fn_zones, fn_csv = None):
 
     lyr = p_ds.GetLayer()
     geot = r_ds.GetGeoTransform()
-    nodata = r_ds.GetRasterBand(1).GetNoDataValue()
+    # A geotransform (geot) consists in a set of 6 coefficients:
+    # GT(0) x-coordinate of the upper-left corner of the upper-left pixel.
+    # GT(1) w-e pixel resolution / pixel width.
+    # GT(2) row rotation (typically zero).
+    # GT(3) y-coordinate of the upper-left corner of the upper-left pixel.
+    # GT(4) column rotation (typically zero).
+    # GT(5) n-s pixel resolution / pixel height (negative value for a north-up image).
+
+    nodata = r_ds.GetRasterBand(band).GetNoDataValue()
 
     zstats = []
     niter = 0
@@ -77,12 +95,11 @@ def zonalStatistics(fn_raster, fn_zones, fn_csv = None):
     #while p_feat:
         if p_feat.GetGeometryRef() is not None:
             if os.path.exists(shp_name):
-                mem_driver.DeleteDataSource(shp_name)
-            tp_ds = mem_driver.CreateDataSource(shp_name)
-            tp_lyr = tp_ds.CreateLayer('polygons', None, ogr.wkbPolygon)
+                mem_driver.DeleteDataSource(shp_name) # delete temporary raster if it already exists
+            tp_ds = mem_driver.CreateDataSource(shp_name) # create a new, empty raster in memory
+            tp_lyr = tp_ds.CreateLayer('polygons', None, ogr.wkbPolygon) # create a temporary polygon layer
             tp_lyr.CreateFeature(p_feat.Clone())
-            offsets = boundingBoxToOffsets(p_feat.GetGeometryRef().GetEnvelope(),\
-            geot)
+            offsets = boundingBoxToOffsets(p_feat.GetGeometryRef().GetEnvelope(), geot) # get the bounding box of the polygon feature and convert the coordinates to cell offsets
             new_geot = geotFromOffsets(offsets[0], offsets[2], geot)
 
             tr_ds = mem_driver_gdal.Create(\
@@ -90,26 +107,48 @@ def zonalStatistics(fn_raster, fn_zones, fn_csv = None):
             offsets[3] - offsets[2], \
             offsets[1] - offsets[0], \
             1, \
-            gdal.GDT_Byte)
+            gdal.GDT_Byte) # create the raster for the rasterized polygon in memory
 
-            tr_ds.SetGeoTransform(new_geot)
-            gdal.RasterizeLayer(tr_ds, [1], tp_lyr, burn_values=[1])
-            tr_array = tr_ds.ReadAsArray()
+            tr_ds.SetGeoTransform(new_geot) # set the geotransfrom the rasterized polygon
+            gdal.RasterizeLayer(tr_ds, [1], tp_lyr, burn_values=[1]) # rasterize the polygon feature
+            tr_array = tr_ds.ReadAsArray() # read data from the rasterized polygon
 
-            r_array = r_ds.GetRasterBand(1).ReadAsArray(\
+            r_array = r_ds.GetRasterBand(band).ReadAsArray(\
             offsets[2],\
             offsets[0],\
             offsets[3] - offsets[2],\
             offsets[1] - offsets[0])
 
             id = p_feat.GetFID()
+            # here it would be also possibe to add the vegetation type ( as safed in the .shp)
+            # p_feat.GetField(1) 
+            # As well as the describtor of location e.g. "close to house"
+            # p_feat.GetField(2)
+            # get bounding box
+            # p_feat.GetGeometryRef().GetEnvelope()
+            # get centroid point
+            # p_feat.GetGeometryRef().Centroid().GetPoint_2D()
+            # get area
+            # p_feat.GetGeometryRef().Area()
+
+            # for calculation of the size of the raster area
+            # see https://gis.stackexchange.com/questions/425849/calculate-cell-pixel-area-with-rasterio-in-python
+            # tr_ds.RasterXSize # x extent of rasterized polygon NOT TRUE - needs to be offset first!
+            # tr_ds.RasterYSize
+            # geot[1]*(-geot[5]) # pixel size of raster in squared degrees (Lon * Lat)
 
             if r_array is not None:
+                
+                if (adjust_func != None) and (adjust_value != None): # added by phil
+                    # adjust function must take the first argument as the raster
+                    r_array = adjust_func(r_array, adjust_value)
+
                 maskarray = np.ma.MaskedArray(\
                 r_array,\
                 mask = np.logical_or(r_array==nodata, np.logical_not(tr_array)))
 
                 if maskarray is not None:
+
                     zstats.append(setFeatureStats(\
                     id,\
                     maskarray.min(),\
@@ -118,10 +157,17 @@ def zonalStatistics(fn_raster, fn_zones, fn_csv = None):
                     np.ma.median(maskarray),\
                     maskarray.std(),\
                     maskarray.sum(),\
-                    maskarray.count()))
+                    maskarray.count(),\
+                    p_feat.GetGeometryRef().Centroid().GetPoint_2D(),\
+                    p_feat.GetGeometryRef().Area(),\
+                    p_feat.GetGeometryRef().GetEnvelope()))
+
                 else:
                     zstats.append(setFeatureStats(\
                     id,\
+                    nodata,\
+                    nodata,\
+                    nodata,\
                     nodata,\
                     nodata,\
                     nodata,\
@@ -132,6 +178,9 @@ def zonalStatistics(fn_raster, fn_zones, fn_csv = None):
             else:
                 zstats.append(setFeatureStats(\
                     id,\
+                    nodata,\
+                    nodata,\
+                    nodata,\
                     nodata,\
                     nodata,\
                     nodata,\
@@ -155,11 +204,32 @@ def zonalStatistics(fn_raster, fn_zones, fn_csv = None):
             writer.writeheader()
             writer.writerows(zstats)
     else: # returns data if no csv filename is provided
-        import pandas as pd
-        return pd.DataFrame.from_dict(zstats) # seemless conversion to R compatible data frame
+        #import pandas as pd
+        df = pd.DataFrame.from_dict(zstats) # seemless conversion to R compatible data frame
+        if band_name != None:
+            df = df.assign(band = band_name) # appennd vegetation indice as column
+        if shadow != None:
+            df = df.assign(shadow = shadow)
+        if flight_date != None:
+            df = df.assign(date = flight_date)
+        if flight_number != None:
+            df = df.assign(flight_number = flight_number)
+        return df
         
 
 # zonalStatistics(fn_raster = "/Volumes/T7/UAV_Steglitz_2019/00__Code/qgis/first_results/14_06_2019_flug1_orginal_16bit_rectified_ndvi.tif",
 #                fn_zones = "/Volumes/T7/UAV_Steglitz_2019/00__Code/qgis/first_results/areas.shp",
 #                fn_csv = "/Users/Jordn/Desktop/zstats.csv")
 
+
+def mergeZonalStatistics(df_1 = None, df_2 = None):
+    '''Merging two Zonal Statistics DataFrames into one.'''
+    #if df_1 == None:
+    #    df_1 = pd.DataFrame() 
+
+    #elif df_2 == None: #if only on dataframe is provided
+    #    return df_1    
+    
+    df = pd.concat([df_1, df_2], axis=0) # vertival
+    #pd.concat([df_1, df_2], axis=1) # horizontal
+    return df

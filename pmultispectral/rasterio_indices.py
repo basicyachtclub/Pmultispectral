@@ -61,10 +61,10 @@ def appendBandtoRaster(file_path, new_band):
         band_position = profile["count"] + 1
 
         profile.update({
-            'count': band_position, # only works if band is appended at last position
-            'dtype':  new_band.dtype ,#"uint16", #rasterio.uint16, # 'float32',
-            'height':  new_band.shape[0],
-            'width':  new_band.shape[1]})  
+            #'dtype':  new_band.dtype ,#"uint16", #rasterio.uint16, # 'float32',
+            #'height':  new_band.shape[0],
+            #'width':  new_band.shape[1],
+            'count': band_position })  # only works if band is appended at last position 
         
         data = src.read()
 
@@ -78,47 +78,6 @@ def appendBandtoRaster(file_path, new_band):
         #dst.write_band(band_position, new_band)
         #dst.write(new_band, 6)
         dst.write(new_data)
-        dst.close()
-
-def appendBandnames(file_path):
-    # append a small dictionary to the metadata in order to be able to distinguish them
-    with rasterio.open(file_path) as src:
-        profile = src.profile.copy()
-        
-       # bandnames = {'band1' : "530nm",
-       #          'band2' : "550nm",
-       #          'band3' : "570nm",
-       #          'band4' : "670nm",
-       #          'band5' : "700nm",
-       #          'band6' : "800nm",
-       #          'band7' : "mask",
-       #          'band8' : "gi",
-       #          'band9' : "gndvi",
-       #          'band10' : "msr",
-       #          'band11' : "ndvi",
-       #          'band12' : "pri"
-       #          }
-       # profile.update({'bandnames': bandnames}) 
-
-        profile.update({
-            'band1' : "530nm",
-            'band2' : "550nm",
-            'band3' : "570nm",
-            'band4' : "670nm",
-            'band5' : "700nm",
-            'band6' : "800nm",
-            'band7' : "mask",
-            'band8' : "gi",
-            'band9' : "gndvi",
-            'band10' : "msr",
-            'band11' : "ndvi",
-            'band12' : "pri"})
-        data = src.read()
-        src.close()    
-    
-
-    with rasterio.open(file_path, 'w', **profile) as dst:
-        dst.write(data)
         dst.close()
     
 

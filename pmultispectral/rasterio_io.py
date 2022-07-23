@@ -26,7 +26,11 @@ def filterFiles(file_list, filter_key_exclude = None, filter_key_include = None)
     if filter_key_include != None:
         file_list = [x for x in file_list if
               all(y in x for y in filter_key_include)]
-    return(file_list)   
+    # emtpy list treated as None
+    if file_list == []: 
+        return None
+    else:
+        return(file_list)   
 
 #file_list = listFiles(folder_path, ".tif")
 #file_list_filtered = filterFiles(file_list)
@@ -39,3 +43,8 @@ def openRasterIntoBands(file_path):
     with rasterio.open(file_path) as src:
         band0, band1, band2, band3, band4, band5, band_mask = src.read()
   
+
+def openRasterBand(file_path):
+    with rasterio.open(file_path) as src:   
+        myband = src.read()
+        

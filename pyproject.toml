@@ -18,3 +18,20 @@ exclude = '''
   | tests/data
 )/
 '''
+
+[tool.poetry]
+name = "pmultispectral"
+version = "0.1.0"
+description = "working with multi page orthomosaics"
+authors = ["Phil Jordan"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.7"
+
+[tool.poetry.dev-dependencies]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
