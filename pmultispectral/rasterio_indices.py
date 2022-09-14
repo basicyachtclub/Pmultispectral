@@ -5,24 +5,32 @@ import numpy as np
 
 
 # Calculating  band indices
-def calcIndx(a,b, lambda_func): 
+def calcIndx(a,b, lower_bound, upper_bound, lambda_func): 
     '''Calculate NDVI from integer arrays'''
-    a = a.astype('f4') # Array-protocol type strings convention for data type
-    b = b.astype('f4') # f4 ~ 2^4 (16bit) floating-point
+    # does data need to be typecast as float? are the ranges of each band relative?
+    #a = a.astype('f4') # Array-protocol type strings convention for data type
+    #b = b.astype('f4') # f4 ~ 2^4 (16bit) floating-point
     indx = lambda_func(a,b)
+    
+    #np.nan_to_num(x = indx, copy=False, nan=0, posinf=0) # getting rid of nan and inf (inplace) - maybe find a version for np 1.16?
+    indx[np.isnan(indx)] = 0
+    indx[np.isinf(indx)] = 0
+
+    indx = np.clip(indx, lower_bound, upper_bound) 
     indx = (indx * 65535).astype('uint16')
     # get info about datatype np.iinfo(np.uint16)
     return indx
 
 
 def calcIndxAll(band0, band1, band2, band3, band4, band5):
+    np.seterr(divide='ignore', invalid='ignore')
     # Calculating all propsed indices
-    # import numpy as np
-    gi =    calcIndx(band1 ,band2, lambda a, b :  a / b ) # Greenness Index (also Green Difference Vegetation Index (GDVI))
-    gndvi = calcIndx(band5 ,band1, lambda a, b : (a - b) / (a + b) ) # Green Normalized Difference Vegetation Index
-    msr =   calcIndx(band5 ,band3, lambda a, b : ((a/b)-1) / np.sqrt((a/b)+1) )  # modified simple ration 670, 800
-    ndvi =  calcIndx(band5 ,band3, lambda a, b : (a - b) / (a + b) ) 
-    pri =   calcIndx(band0 ,band2, lambda a, b : (a - b) / (a + b) ) # photochemical reflectance index
+    # TO DO VERIFY THE BOUNDS OF ALL INDICES
+    gi =    calcIndx(band1 ,band2, lower_bound=0, upper_bound=1, lambda_func = lambda a, b :  a / b ) # Greenness Index (also Green Difference Vegetation Index (GDVI))
+    gndvi = calcIndx(band5 ,band1, lower_bound=0, upper_bound=1, lambda_func = lambda a, b : (a - b) / (a + b) ) # Green Normalized Difference Vegetation Index
+    msr =   calcIndx(band5 ,band3, lower_bound=0, upper_bound=1, lambda_func = lambda a, b : ((a/b)-1) / np.sqrt((a/b)+1) )  # modified simple ration 670, 800
+    ndvi =  calcIndx(band5 ,band3, lower_bound=0, upper_bound=1, lambda_func = lambda a, b : (a - b) / (a + b) ) 
+    pri =   calcIndx(band0 ,band2, lower_bound=0, upper_bound=1, lambda_func = lambda a, b : (a - b) / (a + b) ) # photochemical reflectance index
 
     return (gi, gndvi, msr, ndvi, pri)
 

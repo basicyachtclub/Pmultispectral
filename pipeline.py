@@ -7,19 +7,38 @@ import pmultispectral.zonal_statistics as zonal_statistics
 import logging
 logging.basicConfig(level=logging.INFO)
 
+
+
 # platform depending alterations
-from sys import platform
-if platform == "linux" or platform == "linux2": # linux
-    raise Exception("Linux not implemented")
-elif platform == "darwin": # OS X
-    external_drive = "/Volumes/T7/"
-elif platform == "win32": # Windows...
-    external_drive = "F:/"
+
+# from sys import platform
+# if platform == "linux" or platform == "linux2": # linux
+#     raise Exception("Linux not implemented")
+# elif platform == "darwin": # OS X
+#     external_drive = "/Volumes/T7/"
+# elif platform == "win32": # Windows...
+#     external_drive = "D:/" # HOME
+#     external_drive = "F:/" # UNI
+
+import psutil
+partitions = psutil.disk_partitions()
+for p in partitions:
+    if p.fstype == "exFAT": # Windows
+        external_drive = p.mountpoint
+        logging.info('disk located at : ' + external_drive)
+    elif p.fstype == "exfat": # Osx
+        external_drive = p.mountpoint + "/"
+        logging.info('disk located at : ' + external_drive)
+
 
 # directory info
 folder_path = external_drive + "UAV_Steglitz_2019/01__Multispectral/orthomosaics"
-file_path = folder_path + "/2019_07_17_Flug04.tif"
-out_path = folder_path + "/2019_07_17_Flug04_indices.tif"
+
+#file_path = folder_path + "/2019_07_17_Flug04.tif"
+#out_path = folder_path + "/2019_07_17_Flug04_indices.tif"
+
+
+
 
 bandnames = {   1 : "530nm",
                 2 : "550nm",
@@ -40,9 +59,36 @@ flights = {     "2019_04_17" : ["Flug01"],
                 "2019_07_04" : ["Flug01"],
                 "2019_07_17" : ["Flug01","Flug02","Flug03","Flug04","Flug05","Flug06"]}
 
-parameter = {   'write_indices' : False,
+#flights = {     "2019_04_17" : ["Flug01"]} #,
+#               "2019_05_07" : ["Flug02"]}
+
+# Flight times are derived from the individual .log files in the 04__logfile folder (mid point of observations)
+#flight_hour = {"2019_04_17" : {"flight_number" :["Flug01"], "flight_time" : ["11:21"] },
+#                "2019_05_07" : {"flight_number" :["Flug02"], "flight_time" : ["11:18"] },
+#                "2019_06_14" : {"flight_number" :["Flug01"], "flight_time" : ["11:29"] },
+#                "2019_07_04" : {"flight_number" :["Flug01"], "flight_time" : ["08:26"] },
+#                "2019_07_17" : {"flight_number" :["Flug01","Flug02","Flug03","Flug04","Flug05","Flug06"], 
+#                                "flight_time" : ["04:26", "08:03", "10:29", "13:17", "16:05", "19:03" ] } }
+
+
+flight_time  = {"2019_04_17" : {"Flug01" : "11:21" },
+                "2019_05_07" : {"Flug02" : "11:18" },
+                "2019_06_14" : {"Flug01" : "11:29" },
+                "2019_07_04" : {"Flug01" : "08:26" },
+                "2019_07_17" : {"Flug01" : "04:26",
+                                "Flug02" : "08:03",
+                                "Flug03" : "10:29",
+                                "Flug04" : "13:17",
+                                "Flug05" : "16:05",
+                                "Flug06" : "19:03"} }
+
+
+parameter = {   'clip_shadows' : True, 
+                'write_indices' : False,
                 'zonal_statistics': True, 
-                'zonal_statistics_keys': ["gi", "gndvi", "msr", "ndvi", "pri"]} # for which bands are zonal statistics to be calculated
+                'zonal_statistics_keys': ["gi", "gndvi", "msr", "ndvi", "pri"], # for which bands are zonal statistics to be calculated
+                'zonal_statistics_run_shadows' : True,
+                'check_for_georef' : True } # if (in case they exist) manually georeferenced files should be used for zonal statistics 
 
 #file_path = "F:/UAV_Steglitz_2019/01__Multispectral/orthomosaics/2019_07_17_Flug04.tif" #WINDOWS
 #file_path = "/Volumes/T7/UAV_Steglitz_2019/01__Multispectral/orthomosaics/2019_07_17_Flug04.tif" #MAC
@@ -55,27 +101,63 @@ parameter = {   'write_indices' : False,
 file_list = rasterio_io.listFiles(folder_path, ".tif") # get .tif files in directory
 #file_list_filtered = rasterio_io.filterFiles(file_list, filter_key_exclude = ['indices', 'aux', 'ovr', 'xml'], filter_key_include = ['ETRS']) # filter out unwanted ones
 
+# RUN IN ORDER TO GENERATE CLIPPED SHADOW/ NO SHADOW SHAPEFILES
+file_path_shadow =  external_drive + "UAV_Steglitz_2019/00__Code/qgis/zonal_statistics/shadow"  # location of shadow shape files
+if parameter["clip_shadows"] == True: # clip all shadow .shp files within directory with the original transect file to derive shaded areas of transects (.shp)
+    shp_transect_filename =  external_drive + "UAV_Steglitz_2019/00__Code/qgis/zonal_statistics/areas_EPSG_3045_new.shp"
+    zonal_statistics.clipShadowAllDates(file_path_shadow, shp_transect_filename)
 
 
 for flight_date in list(flights.keys()): # extract individual flights (date and flight number) from directory
     for flight_number in flights[flight_date]:
         file_list_filtered = rasterio_io.filterFiles(file_list, \
-                                                    filter_key_exclude = ['indices', 'aux', 'ovr', 'xml'], \
+                                                    filter_key_exclude = ['indices', 'georef', 'aux', 'ovr', 'xml', 'points'], \
                                                     filter_key_include = ['ETRS', flight_date, flight_number]) 
 
-        if file_list_filtered != None: # instances wheen no file_path is fund
+        if file_list_filtered != None: # only run if files were found in path
             # RUN INDICE CALCULATION MODULE
             if parameter["write_indices"] == True: 
                 for file_path in file_list_filtered:
-                    logging.info('writeIndiceToDisk : ' + file_path)
+                    logging.info('running writeIndiceToDisk : ' + file_path)
                     rasterio_indices.writeIndicesToDisk(file_path)
 
             # RUN ZONAL STATISTICS MODULE
             if parameter["zonal_statistics"] == True:
                 for file_path in file_list_filtered:
                     fn_raster = file_path.replace('.tif', '_indices.tif') # should be run on the indices files
-                    fn_zones = external_drive + "UAV_Steglitz_2019/01__Multispectral/orthomosaics/areas_EPSG_3045.shp"
-                    shadow_val = 0
+                    logging.info('running zonalStatistics for : ' + fn_raster)
+                    
+                    if parameter["check_for_georef"] == True: 
+                        logging.info('searching for georeferenced image')
+                        fn_raster = rasterio_io.checkForAlternativeFile(file_path = fn_raster, 
+                                                                        file_extension = ".tif", 
+                                                                        filter_key_exclude=['aux', 'ovr', 'xml', 'points'],
+                                                                        filter_key_include ="arcgis_georef",
+                                                                        remove_str = None, 
+                                                                        replace_str = "")
+                        
+                    
+
+                    if parameter["zonal_statistics_run_shadows"] == True:
+                        # identify corresponding shadow file
+                        file_list_shadow = rasterio_io.listFiles(file_path_shadow, file_extension = ".shp", search_pattern = "shadow")
+                        fn_zones = rasterio_io.filterFiles(file_list_shadow, filter_key_include = [flight_date, flight_number, 'clipped'])
+                        fn_zones = fn_zones[0] # conversion from 1 element list to string
+                        logging.info('using shadowed transects: ' + fn_zones)
+                        shadow_val = 1
+                    else:
+                        # Old way of statically assigning the area for transects
+                        fn_zones = external_drive + "UAV_Steglitz_2019/00__Code/qgis/zonal_statistics/areas_EPSG_3045_new.shp"
+                        logging.info('using non-shadow transects: ' + fn_zones)
+                        shadow_val = 0
+                    
+                    
+                    
+
+                    
+                    #fn_zones = "/Volumes/T7/UAV_Steglitz_2019/00__Code/qgis/zonal_statistics/shadow_2019_05_07_Flug02.shp"
+                    #shadow_val = 1
+
                     #fn_raster = external_drive + "UAV_Steglitz_2019/01__Multispectral/orthomosaics/2019_04_17_Flug01_ETRS1989_indices.tif"
                     #fn_zones = external_drive + "UAV_Steglitz_2019/00__Code/qgis/first_results/areas.shp"
                     
@@ -89,11 +171,13 @@ for flight_date in list(flights.keys()): # extract individual flights (date and 
                         if band_name in parameter["zonal_statistics_keys"]:
                             zs_stats_band = zonal_statistics.zonalStatistics(fn_raster, fn_zones, \
                                                                             band = band_position, \
+                                                                            id_field= 'transect', \
                                                                             adjust_func = (lambda a, b :  a / b) , \
                                                                             adjust_value = 65535, \
                                                                             band_name = band_name,\
                                                                             flight_date = flight_date ,\
                                                                             flight_number = flight_number,\
+                                                                            flight_time = flight_time[flight_date][flight_number],\
                                                                             shadow = shadow_val,\
                                                                             fn_csv = None)
                             zs_stats_veg_indx = zonal_statistics.mergeZonalStatistics( zs_stats_veg_indx, zs_stats_band)

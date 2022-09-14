@@ -6,6 +6,8 @@ import os
 import numpy as np
 import csv
 import pandas as pd
+import logging
+#import geopandas as gpd
 
 def boundingBoxToOffsets(bbox, geot):
     col1 = int((bbox[0] - geot[0]) / geot[1])
@@ -27,8 +29,8 @@ def geotFromOffsets(row_offset, col_offset, geot):
     return new_geot
 
 
-def setFeatureStats(fid, min, max, mean, median, sd, sum, count, centroid, area, bbox, \
-                    names=["min", "max", "mean", "median", "sd", "sum", "count", "centroid", "area", "bbox", "id"]):
+def setFeatureStats(fid, min, max, mean, median, sd, sum, count, centroid, area, bbox, info, \
+                    names=["min", "max", "mean", "median", "sd", "sum", "count", "centroid", "area", "bbox", "info", "id"]):
     featstats = {
     names[0]: min,
     names[1]: max,
@@ -40,7 +42,8 @@ def setFeatureStats(fid, min, max, mean, median, sd, sum, count, centroid, area,
     names[7]: centroid,
     names[8]: area,
     names[9]: bbox,
-    names[10]: fid,
+    names[10]: info,
+    names[11]: fid,
     }
     return featstats
 
@@ -49,7 +52,16 @@ def convertDtypeValues(raster, lambda_func, conversion_factor ):
     raster_conv = lambda_func(raster, conversion_factor)
     return raster_conv
 
-def zonalStatistics(fn_raster, fn_zones, band = 1, adjust_func = None, adjust_value = None, band_name = None, flight_date = None, flight_number = None, shadow = None, fn_csv = None):
+def zonalStatistics(fn_raster, fn_zones, band = 1, id_field = "id",\
+                        adjust_func = None, \
+                        adjust_value = None, \
+                        band_name = None, \
+                        flight_date = None, \
+                        flight_number = None, \
+                        flight_time = None, \
+                        shadow = None, \
+                        fn_csv = None):
+
     '''All credit for the original code goes to Konrad Hafen
     https://opensourceoptions.com/blog/zonal-statistics-algorithm-with-python-in-4-steps/'''
 
@@ -83,8 +95,11 @@ def zonalStatistics(fn_raster, fn_zones, band = 1, adjust_func = None, adjust_va
     zstats = []
     niter = 0
 
-    # workaround lyr.GetNextFeature() returning None on Windows - on Mac it seems to work fine
+    # check if the id field is contained the current attribute table field names
+    if  id_field not in getAttributeTableNames(lyr): 
+       raise ValueError("id_field not in field values.")
 
+    # workaround lyr.GetNextFeature() returning None on Windows - on Mac it seems to work fine
     lyr.ResetReading()
     lyr.GetFeatureCount() # failsafe to check if GDAL detects any layers at all
 
@@ -97,7 +112,8 @@ def zonalStatistics(fn_raster, fn_zones, band = 1, adjust_func = None, adjust_va
             if os.path.exists(shp_name):
                 mem_driver.DeleteDataSource(shp_name) # delete temporary raster if it already exists
             tp_ds = mem_driver.CreateDataSource(shp_name) # create a new, empty raster in memory
-            tp_lyr = tp_ds.CreateLayer('polygons', None, ogr.wkbPolygon) # create a temporary polygon layer
+            tp_srs = lyr.GetSpatialRef() # temporary srs to satisfy CreateLayer warning level
+            tp_lyr = tp_ds.CreateLayer('polygons', tp_srs, ogr.wkbPolygon) # create a temporary polygon layer
             tp_lyr.CreateFeature(p_feat.Clone())
             offsets = boundingBoxToOffsets(p_feat.GetGeometryRef().GetEnvelope(), geot) # get the bounding box of the polygon feature and convert the coordinates to cell offsets
             new_geot = geotFromOffsets(offsets[0], offsets[2], geot)
@@ -119,7 +135,10 @@ def zonalStatistics(fn_raster, fn_zones, band = 1, adjust_func = None, adjust_va
             offsets[3] - offsets[2],\
             offsets[1] - offsets[0])
 
-            id = p_feat.GetFID()
+            # specifying which field is used as an id
+            #id = p_feat.GetFID() # old
+            id = p_feat.GetField(id_field) # new
+
             # here it would be also possibe to add the vegetation type ( as safed in the .shp)
             # p_feat.GetField(1) 
             # As well as the describtor of location e.g. "close to house"
@@ -130,6 +149,9 @@ def zonalStatistics(fn_raster, fn_zones, band = 1, adjust_func = None, adjust_va
             # p_feat.GetGeometryRef().Centroid().GetPoint_2D()
             # get area
             # p_feat.GetGeometryRef().Area()
+
+            # getting field for vegetation type
+            info_field = p_feat.GetField(1) 
 
             # for calculation of the size of the raster area
             # see https://gis.stackexchange.com/questions/425849/calculate-cell-pixel-area-with-rasterio-in-python
@@ -160,7 +182,8 @@ def zonalStatistics(fn_raster, fn_zones, band = 1, adjust_func = None, adjust_va
                     maskarray.count(),\
                     p_feat.GetGeometryRef().Centroid().GetPoint_2D(),\
                     p_feat.GetGeometryRef().Area(),\
-                    p_feat.GetGeometryRef().GetEnvelope()))
+                    p_feat.GetGeometryRef().GetEnvelope(),\
+                    info_field))
 
                 else:
                     zstats.append(setFeatureStats(\
@@ -174,10 +197,12 @@ def zonalStatistics(fn_raster, fn_zones, band = 1, adjust_func = None, adjust_va
                     nodata,\
                     nodata,\
                     nodata,\
+                    nodata,\
                     nodata))
             else:
                 zstats.append(setFeatureStats(\
                     id,\
+                    info_field, \
                     nodata,\
                     nodata,\
                     nodata,\
@@ -214,6 +239,8 @@ def zonalStatistics(fn_raster, fn_zones, band = 1, adjust_func = None, adjust_va
             df = df.assign(date = flight_date)
         if flight_number != None:
             df = df.assign(flight_number = flight_number)
+        if flight_time != None:
+            df = df.assign(flight_time = flight_time)
         return df
         
 
@@ -233,3 +260,68 @@ def mergeZonalStatistics(df_1 = None, df_2 = None):
     df = pd.concat([df_1, df_2], axis=0) # vertival
     #pd.concat([df_1, df_2], axis=1) # horizontal
     return df
+
+
+def getAttributeTableNames(layer):
+    '''extracts the names of field in the attribute table (colnames) of a .shp'''
+    schema = []
+    ldefn = layer.GetLayerDefn()
+    for n in range(ldefn.GetFieldCount()):
+        fdefn = ldefn.GetFieldDefn(n)
+        schema.append(fdefn.name)
+    return schema
+
+def clipShadow(shp_shadow_filename, shp_transect_filename, outfile_filename):
+    '''Clips the shadow shape files down to the extent of the transects sites'''    
+    # Base Layer
+    driverName = "ESRI Shapefile"
+    driver = ogr.GetDriverByName(driverName)
+    inDataSource = driver.Open(shp_transect_filename, 0)
+    inLayer = inDataSource.GetLayer()
+
+    ## Clip Layer
+    inClipSource = driver.Open(shp_shadow_filename, 0)
+    inClipLayer = inClipSource.GetLayer()
+
+    ## Clipped Shapefile
+    outDataSource = driver.CreateDataSource(outfile_filename)
+    outLayer = outDataSource.CreateLayer('FINAL', geom_type=ogr.wkbMultiPolygon)
+
+    # writing ESRI projection file (.prj) to store CRS
+    spatialRef = inLayer.GetSpatialRef()
+    spatialRef.MorphToESRI()
+    prj_filename = outfile_filename[:-4] + ".prj"
+    prj_file = open(prj_filename, 'w')
+    prj_file.write(spatialRef.ExportToWkt())
+    prj_file.close()
+
+    # actual clip processing & write out
+    ogr.Layer.Clip(inLayer, inClipLayer, outLayer)
+
+    # clean up
+    inDataSource.Destroy()
+    inClipSource.Destroy()
+    outDataSource.Destroy()
+   
+    #return outLayer
+
+
+def clipShadowAllDates(folder_path, shp_transect_filename, search_pattern = "shadow"):
+    '''identify all shape files for shadows in a given directory and clip them with the provided area shape file.
+    Returning a list with the filenames to the corresponding clipped shadow areas.'''
+    import pmultispectral.rasterio_io as rasterio_io
+    
+    # finding all shadow shapefiles
+    file_list = rasterio_io.listFiles(folder_path, file_extension = ".shp", search_pattern = search_pattern)
+    # excluding already clipped files (from an earlier run) - which will be overridden subsequently
+    file_list_filtered = rasterio_io.filterFiles(file_list, filter_key_exclude = ['clipped']) #, filter_key_include = ['ETRS'])
+
+    list_shadow_ogr = []
+    for shp_shadow_filename in file_list_filtered:
+        logging.info('found these files : ' + shp_shadow_filename)
+        outfile_filename = shp_shadow_filename[:-4] +"_clipped.shp"
+        fn_zones_shadow = clipShadow(shp_shadow_filename, shp_transect_filename, outfile_filename)
+        list_shadow_ogr.append(outfile_filename)
+    return(list_shadow_ogr)
+
+
