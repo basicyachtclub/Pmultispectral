@@ -271,16 +271,16 @@ def getAttributeTableNames(layer):
         schema.append(fdefn.name)
     return schema
 
-def clipShadow(shp_shadow_filename, shp_transect_filename, outfile_filename):
+def clipLayer(base_layer_filename, clip_layer_filename, outfile_filename, invert_clip = False):
     '''Clips the shadow shape files down to the extent of the transects sites'''    
     # Base Layer
     driverName = "ESRI Shapefile"
     driver = ogr.GetDriverByName(driverName)
-    inDataSource = driver.Open(shp_transect_filename, 0)
+    inDataSource = driver.Open(base_layer_filename, 0)
     inLayer = inDataSource.GetLayer()
 
     ## Clip Layer
-    inClipSource = driver.Open(shp_shadow_filename, 0)
+    inClipSource = driver.Open(clip_layer_filename, 0)
     inClipLayer = inClipSource.GetLayer()
 
     ## Clipped Shapefile
@@ -296,7 +296,10 @@ def clipShadow(shp_shadow_filename, shp_transect_filename, outfile_filename):
     prj_file.close()
 
     # actual clip processing & write out
-    ogr.Layer.Clip(inLayer, inClipLayer, outLayer)
+    if invert_clip == False:
+        ogr.Layer.Clip(inLayer, inClipLayer, outLayer)
+    elif invert_clip == True:
+        ogr.Layer.Erase(inLayer, inClipLayer, outLayer)
 
     # clean up
     inDataSource.Destroy()
@@ -306,22 +309,52 @@ def clipShadow(shp_shadow_filename, shp_transect_filename, outfile_filename):
     #return outLayer
 
 
-def clipShadowAllDates(folder_path, shp_transect_filename, search_pattern = "shadow"):
-    '''identify all shape files for shadows in a given directory and clip them with the provided area shape file.
-    Returning a list with the filenames to the corresponding clipped shadow areas.'''
+def clipShadowAllDates(folder_path, shp_transect_filename, search_pattern = "shadow", clip_exclude_areas = True, invert = True):
+    '''identify all shape files for shadows in a given directory and clip them with the provided area (transect) shape file.
+    Returning a list with the filenames to the corresponding clipped shadow areas. Normally also does the inverse
+    clip returning all non shaded areas of the area (transect).'''
     import pmultispectral.rasterio_io as rasterio_io
     
     # finding all shadow shapefiles
-    file_list = rasterio_io.listFiles(folder_path, file_extension = ".shp", search_pattern = search_pattern)
+    file_list_shadow = rasterio_io.listFiles(folder_path, file_extension = ".shp", search_pattern = search_pattern)
     # excluding already clipped files (from an earlier run) - which will be overridden subsequently
-    file_list_filtered = rasterio_io.filterFiles(file_list, filter_key_exclude = ['clipped']) #, filter_key_include = ['ETRS'])
+    file_list_shadow_filtered = rasterio_io.filterFiles(file_list_shadow, filter_key_exclude = ['transect', 'exclude']) #, filter_key_include = ['ETRS'])
+
+    # findind all exclude shapefiles
+    file_list_exclude = rasterio_io.listFiles(folder_path, file_extension = ".shp", search_pattern = "exclude")
+    file_list_exclude_filtered = rasterio_io.filterFiles(file_list_exclude, filter_key_exclude = ['transect', 'is_exclude']) #, filter_key_include = ['ETRS'])
+
+
+    # matching pairs in the two file lists
+    file_list_shadow_filtered, file_list_exclude_filtered = rasterio_io.matchUpFileLists(
+                                                                file_list_shadow_filtered, 
+                                                                file_list_exclude_filtered, 
+                                                                filter_key_exclude= ['exclude', 'shadow', '.shp', '_'])
 
     list_shadow_ogr = []
-    for shp_shadow_filename in file_list_filtered:
-        logging.info('found these files : ' + shp_shadow_filename)
-        outfile_filename = shp_shadow_filename[:-4] +"_clipped.shp"
-        fn_zones_shadow = clipShadow(shp_shadow_filename, shp_transect_filename, outfile_filename)
-        list_shadow_ogr.append(outfile_filename)
-    return(list_shadow_ogr)
 
+    # OMG THIS NEXT PART IS HIDEOUS
+    for shp_shadow_filename, shp_exclude_filename in zip(file_list_shadow_filtered, file_list_exclude_filtered) :
+        if clip_exclude_areas == True:
+            # creating an exclude .shp file and setting it as the new input for the shadow clip below
+            outfile_filename = shp_shadow_filename[:-4] +"_is_exclude.shp" 
+            clipLayer(shp_transect_filename, shp_exclude_filename, outfile_filename, invert_clip= True)
+            shp_transect_filename_next = outfile_filename # passing this on to the next steps
+            
+            outfile_filename = outfile_filename[:-4] +"_transect_is_shadow.shp" # building name for dyanimc transects 
+
+        elif clip_exclude_areas == False:
+            outfile_filename = shp_shadow_filename[:-4] +"_transect_is_shadow.shp" #building name for static transects
+            shp_transect_filename_next = shp_transect_filename
+        
+        logging.info('shadow file for clip : ' + shp_shadow_filename)
+        clipLayer(shp_shadow_filename, shp_transect_filename_next, outfile_filename)
+        
+        list_shadow_ogr.append(outfile_filename)
+        
+        if invert == True: # clipping the transects with the transect shadow areas - to retain only no shadowed area .shp
+            outfile_filename_inv = outfile_filename[:-14] +"_no_shadow.shp"
+            clipLayer(shp_transect_filename_next, outfile_filename, outfile_filename_inv, invert_clip= True)
+    
+    return(list_shadow_ogr)
 

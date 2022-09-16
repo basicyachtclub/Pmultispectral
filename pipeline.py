@@ -88,6 +88,7 @@ parameter = {   'clip_shadows' : True,
                 'zonal_statistics': True, 
                 'zonal_statistics_keys': ["gi", "gndvi", "msr", "ndvi", "pri"], # for which bands are zonal statistics to be calculated
                 'zonal_statistics_run_shadows' : True,
+                'zonal_statistics_run_no_shadows' : True,
                 'check_for_georef' : True } # if (in case they exist) manually georeferenced files should be used for zonal statistics 
 
 #file_path = "F:/UAV_Steglitz_2019/01__Multispectral/orthomosaics/2019_07_17_Flug04.tif" #WINDOWS
@@ -106,7 +107,6 @@ file_path_shadow =  external_drive + "UAV_Steglitz_2019/00__Code/qgis/zonal_stat
 if parameter["clip_shadows"] == True: # clip all shadow .shp files within directory with the original transect file to derive shaded areas of transects (.shp)
     shp_transect_filename =  external_drive + "UAV_Steglitz_2019/00__Code/qgis/zonal_statistics/areas_EPSG_3045_new.shp"
     zonal_statistics.clipShadowAllDates(file_path_shadow, shp_transect_filename)
-
 
 for flight_date in list(flights.keys()): # extract individual flights (date and flight number) from directory
     for flight_number in flights[flight_date]:
@@ -137,17 +137,20 @@ for flight_date in list(flights.keys()): # extract individual flights (date and 
                                                                         replace_str = "")
                         
                     
-
                     if parameter["zonal_statistics_run_shadows"] == True:
                         # identify corresponding shadow file
-                        file_list_shadow = rasterio_io.listFiles(file_path_shadow, file_extension = ".shp", search_pattern = "shadow")
-                        fn_zones = rasterio_io.filterFiles(file_list_shadow, filter_key_include = [flight_date, flight_number, 'clipped'])
-                        fn_zones = fn_zones[0] # conversion from 1 element list to string
+                        file_list_shadow = rasterio_io.listFiles(file_path_shadow, file_extension = ".shp", search_pattern = "is_shadow")
+                        fn_zones = rasterio_io.filterFiles(file_list_shadow, filter_key_include = [flight_date, flight_number])
+                        fn_zones = fn_zones[0] # conversion from 1 element list to string HACKY
                         logging.info('using shadowed transects: ' + fn_zones)
                         shadow_val = 1
-                    else:
+
+                    elif parameter["zonal_statistics_run_shadows"] == False:
                         # Old way of statically assigning the area for transects
-                        fn_zones = external_drive + "UAV_Steglitz_2019/00__Code/qgis/zonal_statistics/areas_EPSG_3045_new.shp"
+                        # fn_zones = external_drive + "UAV_Steglitz_2019/00__Code/qgis/zonal_statistics/areas_EPSG_3045_new.shp"
+                        file_list_shadow = rasterio_io.listFiles(file_path_shadow, file_extension = ".shp", search_pattern = "no_shadow")
+                        fn_zones = rasterio_io.filterFiles(file_list_shadow, filter_key_include = [flight_date, flight_number])
+                        fn_zones = fn_zones[0] # conversion from 1 element list to string HACKY
                         logging.info('using non-shadow transects: ' + fn_zones)
                         shadow_val = 0
                     
