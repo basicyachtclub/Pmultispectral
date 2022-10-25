@@ -83,13 +83,13 @@ flight_time  = {"2019_04_17" : {"Flug01" : "11:21" },
                                 "Flug06" : "19:03"} }
 
 
-parameter = {   'clip_shadows' : True, 
+parameter = {   'clip_shadows' : False, 
                 'write_indices' : False,
                 'zonal_statistics': True, 
                 'zonal_statistics_keys': ["gi", "gndvi", "msr", "ndvi", "pri"], # for which bands are zonal statistics to be calculated
-                'zonal_statistics_run_shadows' : True,
-                'zonal_statistics_run_no_shadows' : True,
-                'check_for_georef' : True } # if (in case they exist) manually georeferenced files should be used for zonal statistics 
+                'zonal_statistics_run_shadows' : False,
+                #'zonal_statistics_run_no_shadows' : True,
+                'check_for_georef' : False } # if (in case they exist) manually georeferenced files should be used for zonal statistics 
 
 #file_path = "F:/UAV_Steglitz_2019/01__Multispectral/orthomosaics/2019_07_17_Flug04.tif" #WINDOWS
 #file_path = "/Volumes/T7/UAV_Steglitz_2019/01__Multispectral/orthomosaics/2019_07_17_Flug04.tif" #MAC
@@ -103,16 +103,16 @@ file_list = rasterio_io.listFiles(folder_path, ".tif") # get .tif files in direc
 #file_list_filtered = rasterio_io.filterFiles(file_list, filter_key_exclude = ['indices', 'aux', 'ovr', 'xml'], filter_key_include = ['ETRS']) # filter out unwanted ones
 
 # RUN IN ORDER TO GENERATE CLIPPED SHADOW/ NO SHADOW SHAPEFILES
-file_path_shadow =  external_drive + "UAV_Steglitz_2019/00__Code/qgis/zonal_statistics/shadow"  # location of shadow shape files
+file_path_shadow =  external_drive + "UAV_Steglitz_2019/00__Code/qgis/zonal_statistics/shadow_v2"  # location of shadow shape files
 if parameter["clip_shadows"] == True: # clip all shadow .shp files within directory with the original transect file to derive shaded areas of transects (.shp)
-    shp_transect_filename =  external_drive + "UAV_Steglitz_2019/00__Code/qgis/zonal_statistics/areas_EPSG_3045_new.shp"
+    shp_transect_filename =  external_drive + "UAV_Steglitz_2019/00__Code/qgis/zonal_statistics/areas_EPSG_3045_new_new.shp"
     zonal_statistics.clipShadowAllDates(file_path_shadow, shp_transect_filename)
 
 for flight_date in list(flights.keys()): # extract individual flights (date and flight number) from directory
     for flight_number in flights[flight_date]:
         file_list_filtered = rasterio_io.filterFiles(file_list, \
                                                     filter_key_exclude = ['indices', 'georef', 'aux', 'ovr', 'xml', 'points'], \
-                                                    filter_key_include = ['ETRS', flight_date, flight_number]) 
+                                                    filter_key_include = ['ETRS', 'modified', flight_date, flight_number]) 
 
         if file_list_filtered != None: # only run if files were found in path
             # RUN INDICE CALCULATION MODULE
@@ -123,7 +123,7 @@ for flight_date in list(flights.keys()): # extract individual flights (date and 
 
             # RUN ZONAL STATISTICS MODULE
             if parameter["zonal_statistics"] == True:
-                for file_path in file_list_filtered:
+                 for file_path in file_list_filtered:
                     fn_raster = file_path.replace('.tif', '_indices.tif') # should be run on the indices files
                     logging.info('running zonalStatistics for : ' + fn_raster)
                     
@@ -137,13 +137,17 @@ for flight_date in list(flights.keys()): # extract individual flights (date and 
                                                                         replace_str = "")
                         
                     
-                    if parameter["zonal_statistics_run_shadows"] == True:
+                    if parameter["zonal_statistics_run_shadows"] == True: #ONLY ON CAN BE PASSED TO THE ANALYSIS BELOW
                         # identify corresponding shadow file
                         file_list_shadow = rasterio_io.listFiles(file_path_shadow, file_extension = ".shp", search_pattern = "is_shadow")
                         fn_zones = rasterio_io.filterFiles(file_list_shadow, filter_key_include = [flight_date, flight_number])
                         fn_zones = fn_zones[0] # conversion from 1 element list to string HACKY
                         logging.info('using shadowed transects: ' + fn_zones)
                         shadow_val = 1
+                        shadow_str = '_is_shadow'
+                        if zonal_statistics.checkCrsShp(fn_zones, ref_id = 4326) == False: # check for WGS 84 projection
+                            logging.info('reprojecting CRS from: ' + fn_zones) 
+                            zonal_statistics.reprojectShpInPlace(fn_zones, ref_id = 4326)
 
                     elif parameter["zonal_statistics_run_shadows"] == False:
                         # Old way of statically assigning the area for transects
@@ -153,7 +157,10 @@ for flight_date in list(flights.keys()): # extract individual flights (date and 
                         fn_zones = fn_zones[0] # conversion from 1 element list to string HACKY
                         logging.info('using non-shadow transects: ' + fn_zones)
                         shadow_val = 0
-                    
+                        shadow_str = '_no_shadow'
+                        if zonal_statistics.checkCrsShp(fn_zones, ref_id=4326) == False:  # check for WGS 84 projection
+                            logging.info('reprojecting CRS from: ' + fn_zones)
+                            zonal_statistics.reprojectShpInPlace(fn_zones, ref_id=4326)
                     
                     
 
@@ -184,7 +191,7 @@ for flight_date in list(flights.keys()): # extract individual flights (date and 
                                                                             shadow = shadow_val,\
                                                                             fn_csv = None)
                             zs_stats_veg_indx = zonal_statistics.mergeZonalStatistics( zs_stats_veg_indx, zs_stats_band)
-                    zs_stats_veg_indx.to_csv(fn_raster.replace('.tif', '_zonal_statistics.csv'))
+                    zs_stats_veg_indx.to_csv(fn_raster.replace('.tif', '_zonal_statistics' + shadow_str + '.csv'))
     
 # run for all dates, append date to dataframe
 

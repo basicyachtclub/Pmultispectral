@@ -8,17 +8,21 @@ import numpy as np
 def calcIndx(a,b, lower_bound, upper_bound, lambda_func): 
     '''Calculate NDVI from integer arrays'''
     # does data need to be typecast as float? are the ranges of each band relative?
-    #a = a.astype('f4') # Array-protocol type strings convention for data type
-    #b = b.astype('f4') # f4 ~ 2^4 (16bit) floating-point
+    a = a.astype('f4') / 65535 # Array-protocol type strings convention for data type
+    b = b.astype('f4') / 65535 # f4 ~ 2^4 (16bit) floating-point
     indx = lambda_func(a,b)
     
     #np.nan_to_num(x = indx, copy=False, nan=0, posinf=0) # getting rid of nan and inf (inplace) - maybe find a version for np 1.16?
-    indx[np.isnan(indx)] = 0
-    indx[np.isinf(indx)] = 0
 
-    indx = np.clip(indx, lower_bound, upper_bound) 
-    indx = (indx * 65535).astype('uint16')
-    # get info about datatype np.iinfo(np.uint16)
+
+    indx[np.isnan(indx)] =  -1
+    indx[np.isinf(indx)] =  -1
+
+    indx = np.clip(indx, lower_bound, upper_bound)
+
+    indx = np.interp(indx, (indx.min(), indx.max()), (0, 65535)) # retransformation to uint (so it can be stored in the same raster data as RGB)
+    # indx = (indx * 65535).astype('uint16')
+    # get info about datatype np.info(np.uint16)
     return indx
 
 
@@ -26,11 +30,11 @@ def calcIndxAll(band0, band1, band2, band3, band4, band5):
     np.seterr(divide='ignore', invalid='ignore')
     # Calculating all propsed indices
     # TO DO VERIFY THE BOUNDS OF ALL INDICES
-    gi =    calcIndx(band1 ,band2, lower_bound=0, upper_bound=1, lambda_func = lambda a, b :  a / b ) # Greenness Index (also Green Difference Vegetation Index (GDVI))
-    gndvi = calcIndx(band5 ,band1, lower_bound=0, upper_bound=1, lambda_func = lambda a, b : (a - b) / (a + b) ) # Green Normalized Difference Vegetation Index
-    msr =   calcIndx(band5 ,band3, lower_bound=0, upper_bound=1, lambda_func = lambda a, b : ((a/b)-1) / np.sqrt((a/b)+1) )  # modified simple ration 670, 800
-    ndvi =  calcIndx(band5 ,band3, lower_bound=0, upper_bound=1, lambda_func = lambda a, b : (a - b) / (a + b) ) 
-    pri =   calcIndx(band0 ,band2, lower_bound=0, upper_bound=1, lambda_func = lambda a, b : (a - b) / (a + b) ) # photochemical reflectance index
+    gi =    calcIndx(band1 ,band3, lower_bound=0, upper_bound=10, lambda_func = lambda a, b :  a / b ) # Greenness Index (also Green Difference Vegetation Index (GDVI))
+    gndvi = calcIndx(band5 ,band1, lower_bound=-1, upper_bound=1, lambda_func = lambda a, b : (a - b) / (a + b) ) # Green Normalized Difference Vegetation Index
+    msr =   calcIndx(band5 ,band3, lower_bound=0, upper_bound=10, lambda_func = lambda a, b : ((a/b)-1) / np.sqrt((a/b)+1) )  # modified simple ratio 670, 800
+    ndvi =  calcIndx(band5 ,band3, lower_bound=-1, upper_bound=1, lambda_func = lambda a, b : (a - b) / (a + b) ) 
+    pri =   calcIndx(band0 ,band2, lower_bound=-1, upper_bound=1, lambda_func=lambda a, b : (a - b) / (a + b) )  # photochemical reflectance index
 
     return (gi, gndvi, msr, ndvi, pri)
 
@@ -38,11 +42,18 @@ def calcIndxAll(band0, band1, band2, band3, band4, band5):
     # gndvi - is a chlorophyll index and is used at later stages of development, as it saturates later than NDVI.
     # msr - aims to linearize the  relationships between the index and biophysical parameters.
     # ndvi - green (active) biomass estimation
-    # pri - indicator of photosynthetic efficiency as radation use efficency varies significantly between plants, environmental conditions 
+    # pri - indicator of photosynthetic efficiency as radation use efficency varies significantly between plants, environmental conditions (-1 to 1)
 
     #dict_gi = {     "expr"  : lambda a, b :  a / b ,
     #                "a"     : band1,
     #                "b"     : band2 }
+    
+    # Band 0:	530nm  	    (Slave 1)
+    # Band 1: 	550nm		(Slave 2)
+    # Band 2: 	570nm		(Slave 3)
+    # Band 3: 	670nm		(Slave 4)
+    # Band 4: 	700nm		(Slave 5)
+    # Band 5: 	800nm		(Master)
 
 
 # quick indice plot and infos - data must be provided as 2D numpy array
@@ -51,6 +62,7 @@ def pltIndx(indx):
     print('dtype:    {}'.format(indx.dtype))
     print('shape:    {}'.format(indx.shape))
     print('min val:  {}'.format(indx.min()))
+    print('min mean:  {}'.format(indx.mean()))
     print('max val:  {}'.format(indx.max()))
     #print(f"\n{indx = }")
 
@@ -107,11 +119,11 @@ def writeIndicesToDisk(file_path, update_existing_file = False):
 
     gi, gndvi, msr, ndvi, pri = calcIndxAll(band0, band1, band2, band3, band4, band5)
 
-    appendBandtoRaster(out_path, gi)
-    appendBandtoRaster(out_path, gndvi)
-    appendBandtoRaster(out_path, msr)
-    appendBandtoRaster(out_path, ndvi)
-    appendBandtoRaster(out_path, pri) 
+    appendBandtoRaster(out_path, gi)        #8
+    appendBandtoRaster(out_path, gndvi)     #9
+    appendBandtoRaster(out_path, msr)       #10 
+    appendBandtoRaster(out_path, ndvi)      #11 
+    appendBandtoRaster(out_path, pri)       #12
 
     return None
 

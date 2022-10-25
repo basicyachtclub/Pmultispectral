@@ -46,7 +46,7 @@ def matchUpFileLists(list1, list2, filter_key_exclude = '', fuzz_thresh = 100):
     '''tries to find a matching file from file list b for each file in file_list a.
     Only looks for matches of list2 to list1.'''
     from fuzzywuzzy import fuzz
-    new_list1, new_list2, no_matching, no_matching = [], [], [], []
+    new_list1, new_list2, matching, no_matching = [], [], [], []
     m_score = 0
     for item1 in list1:    
         for item2 in list2:      

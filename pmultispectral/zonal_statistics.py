@@ -1,3 +1,4 @@
+from osgeo import ogr, osr, gdal
 from pickle import TRUE
 from re import T
 from osgeo import gdal
@@ -90,13 +91,16 @@ def zonalStatistics(fn_raster, fn_zones, band = 1, id_field = "id",\
     # GT(4) column rotation (typically zero).
     # GT(5) n-s pixel resolution / pixel height (negative value for a north-up image).
 
+    # check if both files are in the same spatial reference system otherwise algorithm doesnt work
+    # r_ds.GetSpatialRef().GetName() == lyr.GetSpatialRef().GetName()
+    
     nodata = r_ds.GetRasterBand(band).GetNoDataValue()
 
     zstats = []
     niter = 0
 
     # check if the id field is contained the current attribute table field names
-    if  id_field not in getAttributeTableNames(lyr): 
+    if id_field not in getAttributeTableNames(lyr): 
        raise ValueError("id_field not in field values.")
 
     # workaround lyr.GetNextFeature() returning None on Windows - on Mac it seems to work fine
@@ -284,9 +288,15 @@ def clipLayer(base_layer_filename, clip_layer_filename, outfile_filename, invert
     inClipLayer = inClipSource.GetLayer()
 
     ## Clipped Shapefile
-    outDataSource = driver.CreateDataSource(outfile_filename)
-    outLayer = outDataSource.CreateLayer('FINAL', geom_type=ogr.wkbMultiPolygon)
-
+    # case file already exists
+    outDataSource = driver.Open(outfile_filename, 1) # with write access
+    # case where new file needs to be created
+    if outDataSource is None:
+        outDataSource = driver.CreateDataSource(outfile_filename)
+        outLayer = outDataSource.CreateLayer('FINAL', geom_type=ogr.wkbMultiPolygon)
+    else:
+        outLayer = outDataSource.GetLayer()
+        
     # writing ESRI projection file (.prj) to store CRS
     spatialRef = inLayer.GetSpatialRef()
     spatialRef.MorphToESRI()
@@ -348,8 +358,9 @@ def clipShadowAllDates(folder_path, shp_transect_filename, search_pattern = "sha
             shp_transect_filename_next = shp_transect_filename
         
         logging.info('shadow file for clip : ' + shp_shadow_filename)
-        clipLayer(shp_shadow_filename, shp_transect_filename_next, outfile_filename)
-        
+        clipLayer(shp_shadow_filename, shp_transect_filename_next, outfile_filename) # building the actual clip
+        clipLayer(shp_transect_filename_next, outfile_filename, outfile_filename) # reclipping it through the transects to conserve attribute table
+
         list_shadow_ogr.append(outfile_filename)
         
         if invert == True: # clipping the transects with the transect shadow areas - to retain only no shadowed area .shp
@@ -358,3 +369,125 @@ def clipShadowAllDates(folder_path, shp_transect_filename, search_pattern = "sha
     
     return(list_shadow_ogr)
 
+
+def reprojectShpFromRaster(layer, raster):
+    #raster with projections I want
+    #raster = gdal.Open("/home/zeito/pyqgis_data/utah_dem4326.raster")
+
+    #shapefile with the from projection
+    #driver = ogr.GetDriverByName("ESRI Shapefile")
+    #dataSource = driver.Open("/home/zeito/pyqgis_data/polygon8.shp", 1)
+    #layer = dataSource.GetLayer()
+
+    #set spatial reference and transformation
+    sourceprj = layer.GetSpatialRef()
+    targetprj = osr.SpatialReference(wkt=raster.GetProjection())
+    transform = osr.CoordinateTransformation(sourceprj, targetprj)
+
+    #to_fill = ogr.GetDriverByName("Esri Shapefile")
+    #ds = to_fill.CreateDataSource("/home/zeito/pyqgis_data/projected.shp")
+    mem_driver = ogr.GetDriverByName("Memory")
+    #mem_driver_gdal = gdal.GetDriverByName("MEM")
+    #if os.path.exists('temp'):
+    #            mem_driver.DeleteDataSource('temp')
+    ds = mem_driver.CreateDataSource('temp')
+    outlayer = ds.CreateLayer('', targetprj, ogr.wkbPolygon)
+    
+    attribute_names = []
+    ldefn = layer.GetLayerDefn()
+    for n in range(ldefn.GetFieldCount()):
+        fdefn = ldefn.GetFieldDefn(n)
+        attribute_names.append(fdefn.name)
+        outlayer.CreateField(fdefn) # write field to new layer
+    #print(attribute_names)
+
+    #outlayer.CreateField(ogr.FieldDefn('id', ogr.OFTInteger))
+
+    #apply transformation
+    i = 0
+
+    for feature in layer:
+        transformed = feature.GetGeometryRef()
+        transformed.Transform(transform)
+
+        geom = ogr.CreateGeometryFromWkb(transformed.ExportToWkb())
+        defn = outlayer.GetLayerDefn()
+        feat = ogr.Feature(defn)
+        for attribute_name in attribute_names: # copying values from attribute table into new feature
+            value = feature.GetField(attribute_name)
+            feat.SetField(attribute_name, value )
+        #feat.SetField('id', i)
+        feat.SetGeometry(geom)
+        outlayer.CreateFeature(feat)
+        i += 1
+        feat = None
+
+    #layer = outlayer
+    #ds = None
+    return outlayer
+
+
+def reprojectShpInPlace(shp_filename, ref_id = 4326):
+    '''Reprojects an existing ESRI Shapefile in Place on disk. The path to the Shapefile as well as the EPSG projection ID can be provided. 
+    Default EPSG id is 4326 (WGS 84).'''
+    
+    # Load data and create Transformation
+    driver = ogr.GetDriverByName('ESRI Shapefile')
+    inDataSet = driver.Open(shp_filename, 1) # loading of Shapfile with write access
+    inLayer = inDataSet.GetLayer()  # loading layer
+    inSpatialRef = inLayer.GetSpatialRef() # input SpatialReference (EPSG)
+    outSpatialRef = osr.SpatialReference() # output SpatialReference (EPSG)
+    outSpatialRef.ImportFromEPSG(ref_id) # default is WGS 84
+    coordTrans = osr.CoordinateTransformation(inSpatialRef, outSpatialRef) # create the CoordinateTransformation
+
+    # loop through the features, transforming the geometry, 
+    # adding them to the layer as new feature and removing the 'old' feature
+    inLayer_length = inLayer.GetFeatureCount()
+    for ftr_id in range(0, inLayer_length): 
+        Feature = inLayer.GetFeature(ftr_id) # ftr_id is unique within the file 
+        # (appended feature will get continous ID regardless if feature with lower ID is removed)
+
+        geom = Feature.GetGeometryRef()  # get the input geometry
+        geom.Transform(coordTrans) # reproject the geometry
+        Feature.SetGeometry(geom) # set the geometry 
+        inLayer.CreateFeature(Feature) # add the feature to the shapefile
+        inLayer.DeleteFeature(ftr_id) # remove old geomery feature
+
+    # Save and close the shapefiles
+    inDataSet.SyncToDisk()
+    inDataSet.Destroy()
+    
+    # updating the projection file .prj (so the reprojected features match the actual SRS of the file)
+    outSpatialRef.MorphToESRI()
+    prj_file = open(shp_filename[:-4]+'.prj' , 'w')
+    prj_file.write(outSpatialRef.ExportToWkt())
+    prj_file.close()
+    
+def getCrsShp(shp_filename):
+    ''' returns Spatial reference object of shapefile.'''
+    driver = ogr.GetDriverByName('ESRI Shapefile')
+    inDataSet = driver.Open(shp_filename, 0) # read only
+    inLayer = inDataSet.GetLayer()  
+    inSpatialRef = inLayer.GetSpatialRef()
+    return(inSpatialRef)
+
+def checkCrsShp(shp_filename, ref_id = 4326):
+    '''compare if CRS of shapefile corrresponds to EPSG id.'''
+    inSpatialRef = getCrsShp(shp_filename)
+    outSpatialRef = osr.SpatialReference()  
+    outSpatialRef.ImportFromEPSG(ref_id)
+    return(outSpatialRef.ExportToWkt() == inSpatialRef.ExportToWkt())
+
+#checkCrsShp("D:\\UAV_Steglitz_2019\\00__Code\\qgis\\zonal_statistics\\shadow_v2\\shadow_2019_07_17_Flug04_is_exclude_transect_is_shadow.shp")
+
+#reprojectShpInPlace("D:\\UAV_Steglitz_2019\\00__Code\\qgis\\zonal_statistics\\shadow_v2\\shadow_2019_07_17_Flug04_is_exclude_transect_is_shadow.shp")
+ 
+
+#  def reprojectRasterInPlace(raster_filename, ref_id = 4326):
+#     '''Reprojects Raster data in place on disk. Filename to Data as well as a reference coordinate system can be provided (EPSG). 
+#     Default CRS is WGS 84.'''
+#     #filename = r"C:\path\to\input\raster
+#     input_raster = gdal.Open(raster_filename)
+#     #output_raster = r"C:\path\to\output\raster
+#     warp = gdal.Warp(raster_filename, input_raster, dstSRS='EPSG:' + ref_id) # output, input, crs
+#     warp = None # Closes the files
