@@ -275,7 +275,8 @@ def getAttributeTableNames(layer):
         schema.append(fdefn.name)
     return schema
 
-def clipLayer(base_layer_filename, clip_layer_filename, outfile_filename, invert_clip = False):
+
+def clipLayer(base_layer_filename, clip_layer_filename, outfile_filename, invert_clip=False, update_shp=False):
     '''Clips the shadow shape files down to the extent of the transects sites'''    
     # Base Layer
     driverName = "ESRI Shapefile"
@@ -288,15 +289,19 @@ def clipLayer(base_layer_filename, clip_layer_filename, outfile_filename, invert
     inClipLayer = inClipSource.GetLayer()
 
     ## Clipped Shapefile
-    # case file already exists
-    outDataSource = driver.Open(outfile_filename, 1) # with write access
+    # case file already exists and only needs to be updated (in order to conserve attributes through clipping)
+    if update_shp is True:
+        outDataSource = driver.Open(outfile_filename, 1) # with write access
+        #outLayer = outDataSource.GetLayer()
+        inClipSource.DeleteLayer(0)
+        outLayer = outDataSource.CreateLayer('', geom_type=ogr.wkbMultiPolygon)
     # case where new file needs to be created
-    if outDataSource is None:
-        outDataSource = driver.CreateDataSource(outfile_filename)
-        outLayer = outDataSource.CreateLayer('FINAL', geom_type=ogr.wkbMultiPolygon)
     else:
-        outLayer = outDataSource.GetLayer()
-        
+        if os.path.exists(outfile_filename):
+            driver.DeleteDataSource(outfile_filename)
+        outDataSource = driver.CreateDataSource(outfile_filename)
+        outLayer = outDataSource.CreateLayer('', geom_type=ogr.wkbMultiPolygon)
+       
     # writing ESRI projection file (.prj) to store CRS
     spatialRef = inLayer.GetSpatialRef()
     spatialRef.MorphToESRI()
@@ -358,8 +363,9 @@ def clipShadowAllDates(folder_path, shp_transect_filename, search_pattern = "sha
             shp_transect_filename_next = shp_transect_filename
         
         logging.info('shadow file for clip : ' + shp_shadow_filename)
-        clipLayer(shp_shadow_filename, shp_transect_filename_next, outfile_filename) # building the actual clip
-        clipLayer(shp_transect_filename_next, outfile_filename, outfile_filename) # reclipping it through the transects to conserve attribute table
+        clipLayer(shp_transect_filename_next, shp_shadow_filename, outfile_filename)
+        #clipLayer(shp_shadow_filename, shp_transect_filename_next, outfile_filename) # building the actual clip
+        #clipLayer(shp_transect_filename_next, outfile_filename, outfile_filename, update_shp = True) # reclipping it through the transects to conserve attribute table
 
         list_shadow_ogr.append(outfile_filename)
         

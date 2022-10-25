@@ -83,7 +83,7 @@ flight_time  = {"2019_04_17" : {"Flug01" : "11:21" },
                                 "Flug06" : "19:03"} }
 
 
-parameter = {   'clip_shadows' : False, 
+parameter = {   'clip_shadows' : True, 
                 'write_indices' : False,
                 'zonal_statistics': True, 
                 'zonal_statistics_keys': ["gi", "gndvi", "msr", "ndvi", "pri"], # for which bands are zonal statistics to be calculated

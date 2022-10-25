@@ -67,7 +67,7 @@ def matchUpFileLists(list1, list2, filter_key_exclude = '', fuzz_thresh = 100):
 
         if m_score < 60 and not(item1 in matching):
             no_matching.append(item1)
-            logging.info('could not match: ' + item1)
+            logging.info('could not match: ' + item1 + 'with' + item2)
     
     return(new_list1, new_list2)
 
