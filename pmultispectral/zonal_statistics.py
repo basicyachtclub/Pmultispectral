@@ -8,6 +8,8 @@ import numpy as np
 import csv
 import pandas as pd
 import logging
+from pathlib import Path 
+
 #import geopandas as gpd
 
 def boundingBoxToOffsets(bbox, geot):
@@ -93,7 +95,16 @@ def zonalStatistics(fn_raster, fn_zones, band = 1, id_field = "id",\
 
     # check if both files are in the same spatial reference system otherwise algorithm doesnt work
     # r_ds.GetSpatialRef().GetName() == lyr.GetSpatialRef().GetName()
+    # r_ds.GetSpatialRef().GetUTMZone() == lyr.GetSpatialRef().GetUTMZone()
+    # p_feat.GetGeometryRef().GetEnvelope()
     
+    #r_ds.GetSpatialRef().GetAreaOfUse()
+    #r_ds.GetSpatialRef().GetLinearUnitsName()
+    #r_ds.GetProjectionRef()
+    #r_ds.GetRasterBand(band).GetOffset()
+    #r_ds.GetRasterBand(band).GetScale()
+    #r_ds.GetRasterBand(band).GetStatistics()
+
     nodata = r_ds.GetRasterBand(band).GetNoDataValue()
 
     zstats = []
@@ -113,8 +124,8 @@ def zonalStatistics(fn_raster, fn_zones, band = 1, id_field = "id",\
     #p_feat = lyr.GetNextFeature()
     #while p_feat:
         if p_feat.GetGeometryRef() is not None:
-            if os.path.exists(shp_name):
-                mem_driver.DeleteDataSource(shp_name) # delete temporary raster if it already exists
+#            if os.path.exists(shp_name):
+#                mem_driver.DeleteDataSource(shp_name) # delete temporary raster if it already exists
             tp_ds = mem_driver.CreateDataSource(shp_name) # create a new, empty raster in memory
             tp_srs = lyr.GetSpatialRef() # temporary srs to satisfy CreateLayer warning level
             tp_lyr = tp_ds.CreateLayer('polygons', tp_srs, ogr.wkbPolygon) # create a temporary polygon layer
@@ -278,6 +289,8 @@ def getAttributeTableNames(layer):
 
 def clipLayer(base_layer_filename, clip_layer_filename, outfile_filename, invert_clip=False, update_shp=False):
     '''Clips the shadow shape files down to the extent of the transects sites'''    
+    logging.debug('clipping ' + Path(clip_layer_filename).name + '  >>> through ' + Path(base_layer_filename).name + ' >>> into ' +  Path(outfile_filename).name)
+    
     # Base Layer
     driverName = "ESRI Shapefile"
     driver = ogr.GetDriverByName(driverName)
@@ -329,7 +342,8 @@ def clipShadowAllDates(folder_path, shp_transect_filename, search_pattern = "sha
     Returning a list with the filenames to the corresponding clipped shadow areas. Normally also does the inverse
     clip returning all non shaded areas of the area (transect).'''
     import pmultispectral.rasterio_io as rasterio_io
-    
+    logging.info('>> start clipping shadows')
+
     # finding all shadow shapefiles
     file_list_shadow = rasterio_io.listFiles(folder_path, file_extension = ".shp", search_pattern = search_pattern)
     # excluding already clipped files (from an earlier run) - which will be overridden subsequently
@@ -337,8 +351,8 @@ def clipShadowAllDates(folder_path, shp_transect_filename, search_pattern = "sha
 
     # findind all exclude shapefiles
     file_list_exclude = rasterio_io.listFiles(folder_path, file_extension = ".shp", search_pattern = "exclude")
-    file_list_exclude_filtered = rasterio_io.filterFiles(file_list_exclude, filter_key_exclude = ['transect', 'is_exclude']) #, filter_key_include = ['ETRS'])
-
+    # currently also excluding the fixed objects .shp
+    file_list_exclude_filtered = rasterio_io.filterFiles(file_list_exclude, filter_key_exclude = ['transect', 'is_exclude','fixed']) #, filter_key_include = ['ETRS']) 
 
     # matching pairs in the two file lists
     file_list_shadow_filtered, file_list_exclude_filtered = rasterio_io.matchUpFileLists(
@@ -361,8 +375,7 @@ def clipShadowAllDates(folder_path, shp_transect_filename, search_pattern = "sha
         elif clip_exclude_areas == False:
             outfile_filename = shp_shadow_filename[:-4] +"_transect_is_shadow.shp" #building name for static transects
             shp_transect_filename_next = shp_transect_filename
-        
-        logging.info('shadow file for clip : ' + shp_shadow_filename)
+
         clipLayer(shp_transect_filename_next, shp_shadow_filename, outfile_filename)
         #clipLayer(shp_shadow_filename, shp_transect_filename_next, outfile_filename) # building the actual clip
         #clipLayer(shp_transect_filename_next, outfile_filename, outfile_filename, update_shp = True) # reclipping it through the transects to conserve attribute table
@@ -373,6 +386,7 @@ def clipShadowAllDates(folder_path, shp_transect_filename, search_pattern = "sha
             outfile_filename_inv = outfile_filename[:-14] +"_no_shadow.shp"
             clipLayer(shp_transect_filename_next, outfile_filename, outfile_filename_inv, invert_clip= True)
     
+    logging.info('>> end clipping shadows')
     return(list_shadow_ogr)
 
 
@@ -454,9 +468,19 @@ def reprojectShpInPlace(shp_filename, ref_id = 4326):
         # (appended feature will get continous ID regardless if feature with lower ID is removed)
 
         geom = Feature.GetGeometryRef()  # get the input geometry
+        #logging.debug('org: ' + geom.GetEnvelope())
         geom.Transform(coordTrans) # reproject the geometry
-        Feature.SetGeometry(geom) # set the geometry 
-        inLayer.CreateFeature(Feature) # add the feature to the shapefile
+        #logging.debug('rpj: ' + geom.GetEnvelope())
+        geom.SwapXY()
+
+        # NEW VERSION
+        # Feature.SetFeature()
+        # Feature.SetGeometryDirectly(geom)
+
+        # OLD VERSION
+        Feature_Reproject = Feature.Clone() # creates a copy to avoid issues with ownership
+        Feature_Reproject.SetGeometry(geom) # set the geometry 
+        inLayer.CreateFeature(Feature_Reproject) # add the feature to the shapefile
         inLayer.DeleteFeature(ftr_id) # remove old geomery feature
 
     # Save and close the shapefiles
@@ -468,7 +492,69 @@ def reprojectShpInPlace(shp_filename, ref_id = 4326):
     prj_file = open(shp_filename[:-4]+'.prj' , 'w')
     prj_file.write(outSpatialRef.ExportToWkt())
     prj_file.close()
+
+
+def reprojectShpInPlaceTemp(shp_filename, ref_id = 4326):
+    ''' Reprojects an existing ESRI Shapefile in Place on disk through use of a tempfile. The path to the Shapefile as well as the EPSG projection ID can be provided. 
+    Default EPSG id is 4326 (WGS 84). '''
     
+    # Load data and create Transformation
+    driver = ogr.GetDriverByName('ESRI Shapefile')
+    inDataSet = driver.Open(shp_filename, 1) # loading of Shapfile with write access
+    inLayer = inDataSet.GetLayer()  # loading layer
+    inSpatialRef = inLayer.GetSpatialRef() # input SpatialReference (EPSG)
+    outSpatialRef = osr.SpatialReference() # output SpatialReference (EPSG)
+    outSpatialRef.ImportFromEPSG(ref_id) # default is WGS 84
+    coordTrans = osr.CoordinateTransformation(inSpatialRef, outSpatialRef) # create the CoordinateTransformation
+
+    # creating temp file on disk to write into - removing old temp file if existant!
+    temp_filename = os.path.dirname(os.path.abspath(shp_filename)) + '/temp.shp'
+    if os.path.exists(temp_filename):
+        driver.DeleteDataSource(temp_filename)
+    tempDataSet = driver.CreateDataSource(temp_filename)
+    # giving same 'name' as old layer, not sure if thats important
+    tempLayer = tempDataSet.CreateLayer(inLayer.GetName(), srs= outSpatialRef ,geom_type=ogr.wkbMultiPolygon) 
+
+    # add attribute fields to the temp layer
+    inLayerDefn = inLayer.GetLayerDefn()
+    for i in range(0, inLayerDefn.GetFieldCount()):
+        fieldDefn = inLayerDefn.GetFieldDefn(i)
+        tempLayer.CreateField(fieldDefn)
+
+    # get the output layer's feature definition object
+    tempLayerDefn = tempLayer.GetLayerDefn()
+
+    # loop through the features, transforming the geometry, 
+    # adding them to the layer as new feature and removing the 'old' feature
+    inLayer_length = inLayer.GetFeatureCount()
+    for ftr_id in range(0, inLayer_length): 
+        Feature = inLayer.GetFeature(ftr_id) # ftr_id is unique within the file 
+        # (appended feature will get continous ID regardless if feature with lower ID is removed)
+
+        geom = Feature.GetGeometryRef()  # get the input geometry
+        geom.Transform(coordTrans) # reproject the geometry
+        geom.SwapXY() # MAYBE SRS DEPENDENT BUT LONG AND LAT WERE CHANGED
+        
+        # create new blank feature in the temp layer
+        tempFeature = ogr.Feature(tempLayerDefn)
+        # set the reprojected geometry and copy over attributes
+        tempFeature.SetGeometry(geom)
+        for i in range(0, tempLayerDefn.GetFieldCount()):
+         tempFeature.SetField(tempLayerDefn.GetFieldDefn(i).GetNameRef(), Feature.GetField(i))
+        # add the feature to the new shapefile
+        tempLayer.CreateFeature(tempFeature)
+        tempFeature = None
+
+    # Save and close the shapefiles
+    #inDataSet.SyncToDisk()
+    #inDataSet.Destroy()
+    
+    # updating the projection file .prj (so the reprojected features match the actual SRS of the file)
+    outSpatialRef.MorphToESRI()
+    prj_file = open(temp_filename[:-4]+'.prj' , 'w')
+    prj_file.write(outSpatialRef.ExportToWkt())
+    prj_file.close()
+
 def getCrsShp(shp_filename):
     ''' returns Spatial reference object of shapefile.'''
     driver = ogr.GetDriverByName('ESRI Shapefile')
@@ -497,3 +583,48 @@ def checkCrsShp(shp_filename, ref_id = 4326):
 #     #output_raster = r"C:\path\to\output\raster
 #     warp = gdal.Warp(raster_filename, input_raster, dstSRS='EPSG:' + ref_id) # output, input, crs
 #     warp = None # Closes the files
+
+
+
+
+
+
+
+# zonalStatistics(fn_raster = 'F:\\UAV_Steglitz_2019/01__Multispectral/orthomosaics\\2019_04_17_Flug01_ETRS1989_modified_indices.tif', \
+#                 fn_zones = 'F:\\UAV_Steglitz_2019/00__Code/qgis/zonal_statistics/shadow_v2\\shadow_2019_04_17_Flug01_is_exclude_transect_no_shadow.shp', \
+#                 band = 8, \
+#                 id_field= 'transect', \
+#                 adjust_func = (lambda a, b :  a / b) , \
+#                 adjust_value = 65535, \
+#                 band_name = 'gi',\
+#                 flight_date = '2019_04_17' ,\
+#                 flight_number = 'Flug01',\
+#                 flight_time = '11:21',\
+#                 shadow = 0,\
+#                 fn_csv = None)
+
+# zonalStatistics(fn_raster = 'F:\\UAV_Steglitz_2019/01__Multispectral/orthomosaics\\2019_04_17_Flug01_ETRS1989_indices.tif', \
+#                 fn_zones = 'F:\\UAV_Steglitz_2019/00__Code/qgis/zonal_statistics/shadow\\shadow_2019_04_17_Flug01_is_exclude_transect_no_shadow.shp', \
+#                 band = 8, \
+#                 id_field= 'transect', \
+#                 adjust_func = (lambda a, b :  a / b) , \
+#                 adjust_value = 65535, \
+#                 band_name = 'gi',\
+#                 flight_date = '2019_04_17' ,\
+#                 flight_number = 'Flug01',\
+#                 flight_time = '11:21',\
+#                 shadow = 0,\
+#                 fn_csv = None)
+
+
+
+# zonalStatistics(fn_raster, fn_zones, band = 1, id_field = "id",\
+#                         adjust_func = None, \
+#                         adjust_value = None, \
+#                         band_name = None, \
+#                         flight_date = None, \
+#                         flight_number = None, \
+#                         flight_time = None, \
+#                         shadow = None, \
+#                         fn_csv = None)
+

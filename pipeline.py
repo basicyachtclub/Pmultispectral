@@ -161,7 +161,8 @@ for flight_date in list(flights.keys()): # extract individual flights (date and 
                         if zonal_statistics.checkCrsShp(fn_zones, ref_id=4326) == False:  # check for WGS 84 projection
                             logging.info('reprojecting CRS from: ' + fn_zones)
                             zonal_statistics.reprojectShpInPlace(fn_zones, ref_id=4326)
-                    
+                            #zonal_statistics.reprojectShpInPlaceTemp(fn_zones, ref_id=4326)
+                            
                     
 
                     
