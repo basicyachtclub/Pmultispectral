@@ -466,22 +466,31 @@ def reprojectShpInPlace(shp_filename, ref_id = 4326):
     for ftr_id in range(0, inLayer_length): 
         Feature = inLayer.GetFeature(ftr_id) # ftr_id is unique within the file 
         # (appended feature will get continous ID regardless if feature with lower ID is removed)
+        if Feature is not None:
+            geom = Feature.GetGeometryRef()  # get the input geometry
 
-        geom = Feature.GetGeometryRef()  # get the input geometry
-        #logging.debug('org: ' + geom.GetEnvelope())
-        geom.Transform(coordTrans) # reproject the geometry
-        #logging.debug('rpj: ' + geom.GetEnvelope())
-        geom.SwapXY()
+            if geom is not None:
+                #logging.debug('org: ' + geom.GetEnvelope())
+                geom.Transform(coordTrans) # reproject the geometry
+                #logging.debug('rpj: ' + geom.GetEnvelope())
+                geom.SwapXY()
 
-        # NEW VERSION
-        # Feature.SetFeature()
-        # Feature.SetGeometryDirectly(geom)
+                # NEW VERSION
+                # Feature.SetFeature()
+                # Feature.SetGeometryDirectly(geom)
 
-        # OLD VERSION
-        Feature_Reproject = Feature.Clone() # creates a copy to avoid issues with ownership
-        Feature_Reproject.SetGeometry(geom) # set the geometry 
-        inLayer.CreateFeature(Feature_Reproject) # add the feature to the shapefile
-        inLayer.DeleteFeature(ftr_id) # remove old geomery feature
+                # OLD VERSION
+                Feature_Reproject = Feature.Clone() # creates a copy to avoid issues with ownership
+                Feature_Reproject.SetGeometry(geom) # set the geometry 
+                inLayer.CreateFeature(Feature_Reproject) # add the feature to the shapefile
+                inLayer.DeleteFeature(ftr_id) # remove old geomery feature
+            
+            else:
+                logging.debug('NO GEOMETRY: FEATURE ' + str(ftr_id))
+                inLayer.DeleteFeature(ftr_id)
+        else:
+            logging.debug('NO FEATURE: FEATURE ' + str(ftr_id))
+            inLayer.DeleteFeature(ftr_id)
 
     # Save and close the shapefiles
     inDataSet.SyncToDisk()

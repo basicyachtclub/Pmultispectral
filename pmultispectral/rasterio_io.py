@@ -3,6 +3,7 @@
     #from unicodedata import name
     #import nacl
     
+import re
 import rasterio
 import numpy as np
 import os
@@ -10,11 +11,14 @@ import logging
 
 
 # get a list of files within folder matching search pattern
-def listFiles (path, file_extension = "*", search_pattern = "*"):
+def listFiles (path, file_extension = "*", search_pattern = "*", recursive = False):
     #print("\nsearching for '% s':" % (search_pattern + ' ' + file_extension))
     import glob
     #print("\nFiles in directory '% s':" % path)
-    file_list = glob.glob(path + '/' + "*" + search_pattern + "*" + file_extension + "*")
+    if recursive == False:
+        file_list = glob.glob(path + '/' + "*" + search_pattern + "*" + file_extension + "*")
+    if recursive == True:
+        file_list = glob.glob(path + '/**/' + "*" + search_pattern + "*" + file_extension + "*", recursive=recursive)
     #for files in file_list:
     #    print(files)
     return file_list
