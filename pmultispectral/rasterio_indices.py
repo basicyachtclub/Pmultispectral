@@ -2,7 +2,7 @@
 #if __name__ == "__main__":
 import rasterio
 import numpy as np
-
+import shutil
 
 # Calculating  band indices
 def calcIndx(a,b, lower_bound, upper_bound, lambda_func): 
@@ -103,7 +103,8 @@ def appendBandtoRaster(file_path, new_band):
 
 # create all indices and write out to file 
 def writeIndicesToDisk(file_path, update_existing_file = False):
-    
+    '''calculates GI, GNDVI, MSR, NDVI and PRI for an Tetracam input orthomosaic.tif appends indices as bands. 
+    Either the provided file is updated or a new file with _indices suffix is created. '''
     # write the output into a new file
     if update_existing_file == False:
         out_path = file_path[:-4] + "_indices.tif"
@@ -126,6 +127,5 @@ def writeIndicesToDisk(file_path, update_existing_file = False):
     appendBandtoRaster(out_path, pri)       #12
 
     return None
-
 
 

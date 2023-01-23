@@ -8,7 +8,7 @@ import rasterio
 import numpy as np
 import os
 import logging
-
+import shutil
 
 # get a list of files within folder matching search pattern
 def listFiles (path, file_extension = "*", search_pattern = "*", recursive = False):
@@ -29,15 +29,16 @@ def filterFiles(file_list, filter_key_exclude = None, filter_key_include = None)
     if filter_key_exclude != None:
         if isinstance(filter_key_exclude, str):  # if only string is given convert to list
             filter_key_exclude = [filter_key_exclude]
+        # For every file_path in the list it is checked if the file name (not path name) contains filter keys
         file_list = [x for x in file_list if
-              all(y not in x for y in filter_key_exclude)]
-    
+                     all(y not in os.path.basename(os.path.abspath(x)) for y in filter_key_exclude)]
+
     # filtering out everyhting that doesnt contain key's that are wanted
     if filter_key_include != None:
         if isinstance(filter_key_include, str): # if only string is given convert to list
             filter_key_include = [filter_key_include]
         file_list = [x for x in file_list if
-              all(y in x for y in filter_key_include)]
+                     all(y in os.path.basename(os.path.abspath(x)) for y in filter_key_include)]
     # emtpy list treated as None
     if file_list == []: 
         return None
@@ -106,6 +107,73 @@ def checkForAlternativeFile(file_path, file_extension, filter_key_include, filte
 #file_list_filtered = filterFiles(file_list, filter_key_include = ['ETRS'])
 #file_list_filtered = filterFiles(file_list, filter_key_exclude = ['indices', 'aux', 'ovr', 'xml'], filter_key_include = ['ETRS'])
 
+
+# def moveFileToFolder (file_path, folder_path):
+#     file_name = os.path.basename(os.path.abspath(file_path)) # filename
+#     out_file_path = os.path.join(folder_path, file_name)
+
+#     logging.debug(' transfering ' + file_name + ' to ' + folder_path)
+#     try:
+#        shutil.copy(file_path, out_file_path)
+#     except FileNotFoundError as e:
+#         logging.debug(e)
+#         raise
+
+# moveFileToFolder (file_path = 'F:\\UAV_Steglitz_2019\\04__Processed\\orthomosaics\\2019_04_17_Flug01_ETRS1989_modified_indices.tif', 
+#                  folder_path = 'F:\\UAV_Steglitz_2019\\04__Processed\\TT')
+
+
+
+def moveFileToFolder (file_path, folder_path, overwrite = False, existing_dir_only = True, remove_input_file = True):
+    '''Moves provided file to new folder.'''
+    # check if input file exists
+    if os.path.exists(file_path) == False:   
+        logging.debug(' File Not Found: ' + file_path)     
+        raise FileNotFoundError
+        # raise Exception(' File Not Found: ' + file_path)
+    file_name = os.path.basename(os.path.abspath(file_path)) # filename
+
+    # check if output directory exists
+    if os.path.exists(folder_path) == False:
+        logging.warning(' no directory at ' + folder_path)
+        if existing_dir_only:
+            logging.warning(' could not copy file ' + file_name)
+            return
+        logging.debug(' creating dir ' + folder_path)
+        os.makedirs(folder_path, exist_ok=False) 
+        # raises an exception in case there should be a directory
+        # creates folder into depth recursively   
+    out_file_path = os.path.join(folder_path, file_name) # full file output path
+    
+    # checking if file exists at location
+    if os.path.exists(out_file_path):
+        logging.debug(' file already exists at: ' + out_file_path) 
+        if overwrite == False:
+            logging.info(' file duplicate found for ' + file_name + ' at ' + folder_path + ' not overwriting')
+            return
+        else :
+            logging.warning(' file duplicate found for ' + file_name + ' at ' + folder_path + ' overwriting!')
+
+    logging.debug(' transfering ' + file_name + ' to ' + folder_path)
+    shutil.copy2(file_path, out_file_path)
+    
+    if remove_input_file:
+        logging.debug(' removing file at ' + file_path)
+        os.remove(file_path)
+
+
+# import logging    
+# logging.basicConfig(level=logging.DEBUG)
+# moveFileToFolder (file_path = 'F:\\UAV_Steglitz_2019\\04__Processed\\orthomosaics\\2019_04_17_Flug01_ETRS1989_modified_indices.tif', 
+#                  folder_path = 'F:\\UAV_Steglitz_2019\\04__Processed\\T' , 
+#                  overwrite = True)
+
+# moveFileToFolder (file_path = 'F:\\UAV_Steglitz_2019\\04__Processed\\orthomosaics\\2019_04_17_Flug01_ETRS1989_modified_indices.tif', 
+#                  folder_path = 'F:\\UAV_Steglitz_2019\\04__Processed\\test' , 
+#                  overwrite = False,
+#                  existing_dir_only= True)
+
+print('END')
 
 def openRasterIntoBands(file_path):
     with rasterio.open(file_path) as src:
