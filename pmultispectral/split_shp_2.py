@@ -6,7 +6,7 @@ matplotlib.use('TkAgg')
 from shapely.geometry import LineString, MultiPolygon, Polygon, shape, mapping
 from shapely.ops import split
 
-tolerance = 1
+tolerance = 1 # PERCENTAGE TOLERANCE FOR THE SPLIT
 
 def save_to_disk(divided_polygons, filename):
     schema = {
@@ -81,53 +81,61 @@ def split_polygon_orthogonally(polygon, split_percentage):
         #     plt.plot(x, y)
     return divided_polygons
 
+def divide_shp_file(directory, filename):
+    file_path = os.path.join(directory, filename)
+    divided_features = []
+    with fiona.open(file_path) as src:
+            for feature in src:
+                polygon = Polygon(feature["geometry"]["coordinates"][0])
+                divided_polygons = split_polygon(polygon, 0.5)
+                divided_polygons = sorted(divided_polygons, key=lambda p: p.area, reverse=True)[:2]
+                divided_polygons = [split_polygon_orthogonally(p, 0.5) for p in divided_polygons]
+                divided_polygons = [p for sublist in divided_polygons for p in sublist]
+                divided_polygons = sorted(divided_polygons, key=lambda p: p.area, reverse=True)[:4]
+
+                for i, d in enumerate(divided_polygons):
+                    #x, y = d.exterior.xy
+                    #plt.plot(x, y)
+
+                    divided_feature = { # copying feature attribute table properties
+                        'type': 'Feature',
+                        'geometry': mapping(d),
+                        'properties': feature["properties"].copy() 
+                    }
+                    divided_feature["properties"]["split_id"] = i # save split_id
+                    divided_features.append(divided_feature)
+
+            schema = src.schema.copy()
+            # add the new column to the attribute table schema for writing
+            schema["properties"]["split_id"] = "int"
+
+            output_file = os.path.join(directory, filename[:-4] + "_divided.shp")
+            with fiona.open(output_file, 'w', driver='ESRI Shapefile', crs=src.crs, schema=schema) as dst:
+                for divided_feature in divided_features:
+                    dst.write(divided_feature)
+    #plt.show()
+
+# if __name__ == "__main__":
+#     import sys
+
+#     if len(sys.argv) < 2:
+#         print("Please provide the filename string as an argument.")
+#         sys.exit()
+
+#     filename = sys.argv[1]
+#     directory = os.path.dirname(os.path.abspath(filename))
+#     divide_shp_file(directory, filename)
 
 #directory = "D://UAV_Steglitz_2019/00__Code/qgis/study_site"
-directory = "F://UAV_Steglitz_2019/00__Code/qgis/study_site"
+#directory = "F://UAV_Steglitz_2019/00__Code/qgis/study_site"
 #directory = "/Volumes/T7/UAV_Steglitz_2019/00__Code/qgis/study_site"
-string = "areas_EPSG_3045_new_new"
+#filename= "areas_EPSG_3045_new_new.shp"
 
 directory = 'F://UAV_Steglitz_2019/04__Processed/areas_and_shapes'
-string = 'areas_EPSG_3045_pipeline'
+filename = 'areas_EPSG_3045_pipeline_divided.shp'
 
-divided_features = []
-for filename in os.listdir(directory):
-    if filename.endswith(".shp") and string in filename:
-        file_path = os.path.join(directory, filename)
-        with fiona.open(file_path) as src:
-                for feature in src:
-                    polygon = Polygon(feature["geometry"]["coordinates"][0])
-                    divided_polygons = split_polygon(polygon, 0.5)
-                    divided_polygons = sorted(divided_polygons, key=lambda p: p.area, reverse=True)[:2]
-                    divided_polygons = [split_polygon_orthogonally(p, 0.5) for p in divided_polygons]
-                    divided_polygons = [p for sublist in divided_polygons for p in sublist]
-                    divided_polygons = sorted(divided_polygons, key=lambda p: p.area, reverse=True)[:4]
-                    for p in divided_polygons:
-                        x, y = p.exterior.xy
-                        plt.plot(x, y)
-                        divided_features.append(p)
-
-                write_out_file_name = directory + "/" + string + "_fourway_split.shp"
-
-                schema = {
-                    'geometry': 'Polygon',
-                    'properties': {'id': 'int'},
-                }
-
-                with fiona.open(write_out_file_name, "w", "ESRI Shapefile", schema, crs=src.crs) as sink:
-                    for i, polygon in enumerate(divided_features):
-                        sink.write({
-                            'geometry': mapping(polygon),
-                            'properties': {'id': i},
-                        })
-
-plt.show()
-
-
-
-
+divide_shp_file(directory, filename)
 
 print("END OF FILE")
-
 
 
