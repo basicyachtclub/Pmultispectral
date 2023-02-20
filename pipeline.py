@@ -6,7 +6,7 @@ import pmultispectral.zonal_statistics as zonal_statistics
 import os
 
 import logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 #logging.basicConfig(filename='example.log', encoding='utf-8', level=logging.DEBUG)
 
 
@@ -35,8 +35,9 @@ for p in partitions:
 # directory info
 folder_path = external_drive + "UAV_Steglitz_2019/04__Processed/orthomosaics"
 orthomosaic_indice_path =  external_drive + "UAV_Steglitz_2019/04__Processed/orthomosaics_indices_v3"
+shp_transect_filename = external_drive + "UAV_Steglitz_2019/04__Processed/areas_and_shapes/areas_EPSG_3045_pipeline.shp"
 file_path_shadow =  external_drive + "UAV_Steglitz_2019/04__Processed/shadow_v2"  # location of shadow shape files
-file_path_shadow_special =  external_drive + "UAV_Steglitz_2019/04__Processed/shadow_special_v2" 
+file_path_shadow_special =  external_drive + "UAV_Steglitz_2019/04__Processed/shadow_special_v3" 
 zs_stats_folder =  external_drive + "UAV_Steglitz_2019/04__Processed/zonal_statistics_v4" # output folder
 
 #file_path = folder_path + "/2019_07_17_Flug04.tif"
@@ -60,9 +61,9 @@ flights = {     "2019_04_17" : ["Flug01"],
                 "2019_05_07" : ["Flug02"],
                 "2019_06_14" : ["Flug01"],
                 "2019_07_04" : ["Flug01"],
-                "2019_07_17" : ["Flug01","Flug02","Flug03","Flug04","Flug05","Flug06"]}
+                "2019_07_17" : ["Flug02","Flug03","Flug04","Flug05"]}
 
-flights = {     "2019_07_17" : ["Flug01","Flug02","Flug03","Flug04","Flug05","Flug06"]} 
+#flights = {     "2019_07_17" : ["Flug02","Flug03","Flug04","Flug05"]} 
 
 # Flight times are derived from the individual .log files in the 04__logfile folder (mid point of observations)
 #flight_hour = {"2019_04_17" : {"flight_number" :["Flug01"], "flight_time" : ["11:21"] },
@@ -85,11 +86,11 @@ flight_time  = {"2019_04_17" : {"Flug01" : "11:21" },
                                 "Flug06" : "19:03"} }
 
 
-parameter = {   'clip_shadows' : False, 
+parameter = {   'clip_shadows' : False, #'SPECIAL', 
                 'write_indices' : False,
                 'zonal_statistics': True, 
                 'zonal_statistics_keys': ["gi", "gndvi", "msr", "ndvi", "pri", "thermal"], # for which bands are zonal statistics to be calculated
-                'zonal_statistics_run_shadows' : 'SPECIAL' , #'SPECIAL',
+                'zonal_statistics_run_shadows' : False,
                 #'zonal_statistics_run_no_shadows' : True,
                 'check_for_georef' : False } # if (in case they exist) manually georeferenced files should be used for zonal statistics 
 
@@ -106,8 +107,10 @@ if __name__ == "__main__": # so the code below is not executed during an import
 
     # RUN IN ORDER TO GENERATE CLIPPED SHADOW/ NO SHADOW SHAPEFILES
     if parameter["clip_shadows"] == True: # clip all shadow .shp files within directory with the original transect file to derive shaded areas of transects (.shp)
-        shp_transect_filename =  external_drive + "UAV_Steglitz_2019/04__Processed/areas_and_shapes/areas_EPSG_3045_pipeline.shp"
         zonal_statistics.clipShadowAllDates(file_path_shadow, shp_transect_filename)
+    elif parameter["clip_shadows"] == 'SPECIAL': # clip all shadow .shp files within directory with the original transect file to derive shaded areas of transects (.shp)
+        zonal_statistics.clipShadowAllDates(file_path_shadow_special, shp_transect_filename, 
+                                            filter_key_exclude_matchUp=['exclude', 'shadow', '.shp', '_', 'zero', 'one', 'two', 'three', 'four'])
 
     for flight_date in list(flights.keys()): # extract individual flights (date and flight number) from directory
         for flight_number in flights[flight_date]:
@@ -173,10 +176,11 @@ if __name__ == "__main__": # so the code below is not executed during an import
                                 #zonal_statistics.reprojectShpInPlaceTemp(fn_zones, ref_id=4326)
                                 
                         elif parameter["zonal_statistics_run_shadows"] == 'SPECIAL':
+                            special_key, shadow_val = 'zero', 0
                             #special_key, shadow_val = 'one', 1
                             #special_key, shadow_val = 'two', 2
                             #special_key, shadow_val = 'three', 3
-                            special_key, shadow_val = 'four', 4
+                            #special_key, shadow_val = 'four', 4
                             file_list_shadow = rasterio_io.listFiles(file_path_shadow_special, file_extension = ".shp", search_pattern = special_key)
                             fn_zones = rasterio_io.filterFiles(file_list_shadow, filter_key_include = ['is_shadow'])
                             fn_zones = fn_zones[0] # conversion from 1 element list to string HACKY

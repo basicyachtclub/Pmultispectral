@@ -337,7 +337,12 @@ def clipLayer(base_layer_filename, clip_layer_filename, outfile_filename, invert
     #return outLayer
 
 
-def clipShadowAllDates(folder_path, shp_transect_filename, search_pattern = "shadow", clip_exclude_areas = True, invert = True):
+def clipShadowAllDates(folder_path, shp_transect_filename, 
+                        search_pattern = "shadow", clip_exclude_areas = True, invert = True,
+                        filter_key_exclude_shadow = ['transect', 'exclude'],
+                        filter_key_exclude_exclude = ['transect', 'is_exclude','fixed'],
+                        filter_key_exclude_matchUp = ['exclude', 'shadow', '.shp', '_']):
+                        
     '''identify all shape files for shadows in a given directory and clip them with the provided area (transect) shape file.
     Returning a list with the filenames to the corresponding clipped shadow areas. Normally also does the inverse
     clip returning all non shaded areas of the area (transect).'''
@@ -347,18 +352,18 @@ def clipShadowAllDates(folder_path, shp_transect_filename, search_pattern = "sha
     # finding all shadow shapefiles
     file_list_shadow = rasterio_io.listFiles(folder_path, file_extension = ".shp", search_pattern = search_pattern)
     # excluding already clipped files (from an earlier run) - which will be overridden subsequently
-    file_list_shadow_filtered = rasterio_io.filterFiles(file_list_shadow, filter_key_exclude = ['transect', 'exclude']) #, filter_key_include = ['ETRS'])
+    file_list_shadow_filtered = rasterio_io.filterFiles( file_list_shadow, filter_key_exclude = filter_key_exclude_shadow)  # , filter_key_include = ['ETRS'])
 
     # findind all exclude shapefiles
     file_list_exclude = rasterio_io.listFiles(folder_path, file_extension = ".shp", search_pattern = "exclude")
     # currently also excluding the fixed objects .shp
-    file_list_exclude_filtered = rasterio_io.filterFiles(file_list_exclude, filter_key_exclude = ['transect', 'is_exclude','fixed']) #, filter_key_include = ['ETRS']) 
+    file_list_exclude_filtered = rasterio_io.filterFiles(file_list_exclude, filter_key_exclude = filter_key_exclude_exclude) #, filter_key_include = ['ETRS']) 
 
     # matching pairs in the two file lists
     file_list_shadow_filtered, file_list_exclude_filtered = rasterio_io.matchUpFileLists(
                                                                 file_list_shadow_filtered, 
                                                                 file_list_exclude_filtered, 
-                                                                filter_key_exclude= ['exclude', 'shadow', '.shp', '_'])
+                                                                filter_key_exclude = filter_key_exclude_matchUp)
 
     list_shadow_ogr = []
 

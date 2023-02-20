@@ -24,7 +24,7 @@ def listFiles (path, file_extension = "*", search_pattern = "*", recursive = Fal
     return file_list
 
 # filteres out file names which contain unwanted keywords
-def filterFiles(file_list, filter_key_exclude = None, filter_key_include = None):
+def filterFiles(file_list, filter_key_exclude = None, filter_key_include = None, include_folder_names = False):
     # filtering out all key's that are unwanted
     if filter_key_exclude != None:
         if isinstance(filter_key_exclude, str):  # if only string is given convert to list
@@ -37,7 +37,12 @@ def filterFiles(file_list, filter_key_exclude = None, filter_key_include = None)
     if filter_key_include != None:
         if isinstance(filter_key_include, str): # if only string is given convert to list
             filter_key_include = [filter_key_include]
-        file_list = [x for x in file_list if
+
+        if include_folder_names: # search include keys found in folder names are also accepted   
+            file_list = [x for x in file_list if
+                         all(y in x for y in filter_key_include)]
+        else: # only filenames are searched for include keys  
+            file_list = [x for x in file_list if
                      all(y in os.path.basename(os.path.abspath(x)) for y in filter_key_include)]
     # emtpy list treated as None
     if file_list == []: 
@@ -46,6 +51,7 @@ def filterFiles(file_list, filter_key_exclude = None, filter_key_include = None)
     #    return file_list[0] # returning as single string not list
     else:
         return(file_list)   
+
 
 def matchUpFileLists(list1, list2, filter_key_exclude = '', fuzz_thresh = 100):
     '''tries to find a matching file from file list b for each file in file_list a.
