@@ -18,15 +18,16 @@ flights_thermal_all_ortho = {       "2019-04-17" : ["Flug_01", "Flug_02"],
                                     # "2019-07-17" - "Flug_01" and "Flug_06" have point clouds but no ortho
 
 # put this here as well in order to avoid changes to flights in pipeline to affect this script
-flights = {"2019_07_17" : ["Flug02", "Flug03", "Flug04", "Flug05"]}
-flights_thermal = {"2019-07-17" : ["Flug_02", "Flug_03", "Flug_04", "Flug_05"]}
+#flights = {"2019_07_17" : ["Flug02", "Flug03", "Flug04", "Flug05"]}
+#flights_thermal = {"2019-07-17" : ["Flug_02", "Flug_03", "Flug_04", "Flug_05"]}
 
 
 # adjustment for a single band for reproducability
 # key - band number, value - name prefix in zonal statistics
-bandnames_thermal = {   1 : "thermal"} 
+bandnames_thermal = {  1 : "thermal"} 
 
-zs_stats_thermal_folder = external_drive + "UAV_Steglitz_2019/04__Processed/zonal_statistics_thermal_v1"
+zs_stats_thermal_folder = external_drive + "UAV_Steglitz_2019/04__Processed/zonal_statistics_thermal_v2"
+zs_stats_thermal_folder_special = external_drive + "UAV_Steglitz_2019/04__Processed/zonal_statistics_thermal_special_v2"
 
 # EXTRACTING THERMAL .TIF FILES
 folder_path = external_drive + "UAV_Steglitz_2019/02__Thermal"
@@ -90,13 +91,17 @@ for flight_date, flight_date_thermal in zip( list(flights.keys()), list(flights_
                                 #zonal_statistics.reprojectShpInPlaceTemp(fn_zones, ref_id=4326)
 
                         elif parameter["zonal_statistics_run_shadows"] == 'SPECIAL':
-                            #special_key, shadow_val = 'one', 1
-                            #special_key, shadow_val = 'two', 2
-                            #special_key, shadow_val = 'three', 3
-                            special_key, shadow_val = 'four', 4
+                            zs_stats_thermal_folder = zs_stats_thermal_folder_special # override output dir
+                            special_key, filter_key, shadow_val = 'zero', 'no_shadow', 0  # no shadow shapefile is from basic shadow folder
+                            #special_key, filter_key, shadow_val = 'one',   'is_shadow', 1
+                            #special_key, filter_key, shadow_val = 'two',   'is_shadow', 2
+                            #special_key, filter_key, shadow_val = 'three', 'is_shadow', 3
+                            #special_key, filter_key, shadow_val = 'four',  'is_shadow', 4
+                            
                             file_list_shadow = rasterio_io.listFiles(
                                 file_path_shadow_special, file_extension=".shp", search_pattern=special_key)
-                            fn_zones = rasterio_io.filterFiles(file_list_shadow, filter_key_include=['is_shadow'])
+                            fn_zones = rasterio_io.filterFiles(file_list_shadow, filter_key_include=[
+                                                               filter_key, flight_number])  # 'no_shadow' 'is_shadow'
                             fn_zones = fn_zones[0]  # conversion from 1 element list to string HACKY
                             #fn_zones = file_list_shadow[0]
                             logging.info('using SPECIAL-shadows: ' + fn_zones)
@@ -117,12 +122,16 @@ for flight_date, flight_date_thermal in zip( list(flights.keys()), list(flights_
                                                                                 id_field= 'transect', \
                                                                                 adjust_func = None , \
                                                                                 adjust_value = None, \
+                                                                                adjust_func_fix = None,
                                                                                 band_name = band_name,\
                                                                                 flight_date = flight_date ,\
                                                                                 flight_number = flight_number,\
                                                                                 flight_time = flight_time[flight_date][flight_number],\
                                                                                 shadow = shadow_val,\
                                                                                 fn_csv = None)
+                                zs_stats_band['split_id'] = zs_stats_band.index % 4 + 1 # HARDCODED 4 WAY SPLIT!
+                                zs_stats_band['feature_id'] = zs_stats_band.index
+                                zs_stats_band['full_id'] = zs_stats_band.split_id * 10  + zs_stats_band.feature_id
                                 zs_stats_veg_indx = zonal_statistics.mergeZonalStatistics( zs_stats_veg_indx, zs_stats_band)
                         # write out zonal statistics to disk (.csv)
                         #zs_stats_veg_indx.to_csv(folder_path + '/zonal_statistics/' + flight_date + "_" + flight_number + "_thermal_zonal_statistics" + shadow_str + '.csv')
