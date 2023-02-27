@@ -58,6 +58,7 @@ def convertDtypeValues(raster, lambda_func, conversion_factor ):
 def zonalStatistics(fn_raster, fn_zones, band = 1, id_field = "id",\
                         adjust_func = None, \
                         adjust_value = None, \
+                        adjust_func_fix = None, \
                         band_name = None, \
                         flight_date = None, \
                         flight_number = None, \
@@ -167,6 +168,7 @@ def zonalStatistics(fn_raster, fn_zones, band = 1, id_field = "id",\
 
             # getting field for vegetation type
             info_field = p_feat.GetField(1) 
+            #info_field_2 = p_feat.GetField(2)
 
             # for calculation of the size of the raster area
             # see https://gis.stackexchange.com/questions/425849/calculate-cell-pixel-area-with-rasterio-in-python
@@ -179,6 +181,8 @@ def zonalStatistics(fn_raster, fn_zones, band = 1, id_field = "id",\
                 if (adjust_func != None) and (adjust_value != None): # added by phil
                     # adjust function must take the first argument as the raster
                     r_array = adjust_func(r_array, adjust_value)
+                elif (adjust_func_fix != None):
+                    r_array = adjust_func_fix(r_array)
 
                 maskarray = np.ma.MaskedArray(\
                 r_array,\
@@ -215,19 +219,20 @@ def zonalStatistics(fn_raster, fn_zones, band = 1, id_field = "id",\
                     nodata,\
                     nodata))
             else:
-                zstats.append(setFeatureStats(\
-                    id,\
-                    info_field, \
-                    nodata,\
-                    nodata,\
-                    nodata,\
-                    nodata,\
-                    nodata,\
-                    nodata,\
-                    nodata,\
-                    nodata,\
-                    nodata,\
-                    nodata))
+                zstats.append(setFeatureStats(
+                    id,
+                    nodata,
+                    nodata,
+                    nodata,
+                    nodata,
+                    nodata,
+                    nodata,
+                    nodata,
+                    nodata,
+                    nodata,
+                    nodata,
+                    info_field  # MAYBE THIS SHOULD BE FURTER DOWN?
+                    ))
 
             tp_ds = None
             tp_lyr = None
@@ -256,6 +261,7 @@ def zonalStatistics(fn_raster, fn_zones, band = 1, id_field = "id",\
             df = df.assign(flight_number = flight_number)
         if flight_time != None:
             df = df.assign(flight_time = flight_time)
+        
         return df
         
 
