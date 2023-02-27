@@ -20,7 +20,9 @@ def calcIndx(a,b, lower_bound, upper_bound, lambda_func):
 
     indx = np.clip(indx, lower_bound, upper_bound)
 
-    indx = np.interp(indx, (indx.min(), indx.max()), (0, 65535)) # retransformation to uint (so it can be stored in the same raster data as RGB)
+    #shouldnt it rather be indx = np.interp(indx, (lower_bound, upper_bound), (0, 65535)) as otherwise its impossible to know the real value of any indice later on?
+    indx = np.interp(indx, (lower_bound, upper_bound), (0, 65535))
+    #indx = np.interp(indx, (indx.min(), indx.max()), (0, 65535)) # retransformation to uint (so it can be stored in the same raster data as RGB)
     # indx = (indx * 65535).astype('uint16')
     # get info about datatype np.info(np.uint16)
     return indx
@@ -34,7 +36,7 @@ def calcIndxAll(band0, band1, band2, band3, band4, band5):
     gndvi = calcIndx(band5 ,band1, lower_bound=-1, upper_bound=1, lambda_func = lambda a, b : (a - b) / (a + b) ) # Green Normalized Difference Vegetation Index
     msr =   calcIndx(band5 ,band3, lower_bound=0, upper_bound=10, lambda_func = lambda a, b : ((a/b)-1) / np.sqrt((a/b)+1) )  # modified simple ratio 670, 800
     ndvi =  calcIndx(band5 ,band3, lower_bound=-1, upper_bound=1, lambda_func = lambda a, b : (a - b) / (a + b) ) 
-    pri =   calcIndx(band0 ,band2, lower_bound=-1, upper_bound=1, lambda_func=lambda a, b : (a - b) / (a + b) )  # photochemical reflectance index
+    pri =   calcIndx(band0 ,band2, lower_bound=-1, upper_bound=1, lambda_func = lambda a, b : (a - b) / (a + b) )  # photochemical reflectance index
 
     return (gi, gndvi, msr, ndvi, pri)
 
