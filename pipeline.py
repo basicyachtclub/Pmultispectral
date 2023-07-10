@@ -91,9 +91,9 @@ flight_time  = {"2019_04_17" : {"Flug01" : "11:21" },
 parameter = {   'clip_shadows' : False, #'SPECIAL', 
                 'write_indices' : False,
                 'zonal_statistics': True, 
-                'zonal_statistics_keys': [  "530nm", "550nm", "570nm", "670nm", "700nm", "800nm"
+                'zonal_statistics_keys': [  "530nm", "550nm", "570nm", "670nm", "700nm", "800nm",
                                             "gi", "gndvi", "msr", "ndvi", "pri", "thermal"], # for which bands are zonal statistics to be calculated
-                'zonal_statistics_run_shadows' : False, #'SPECIAL' ,
+                'zonal_statistics_run_shadows' : 'SPECIAL' ,
                 #'zonal_statistics_run_no_shadows' : True,
                 'check_for_georef' : False } # if (in case they exist) manually georeferenced files should be used for zonal statistics 
 
@@ -103,11 +103,16 @@ val_adjust_functions = {"530nm" : (lambda a :  a / 65535),
                         "670nm" : (lambda a :  a / 65535),
                         "700nm" : (lambda a :  a / 65535),
                         "800nm" : (lambda a :  a / 65535),
-                        "gi" : ( lambda a : (10 * (a - np.min(a)) / np.ptp(a)).astype('f4') )  , # val range 0 to 10
-                        "gndvi" : ( lambda a : (2.*(a - np.min(a))/np.ptp(a)-1).astype('f4')  )  ,               # val range -1 to 1           
-                        "msr" : ( lambda a : (10 * (a - np.min(a)) / np.ptp(a)).astype('f4') )  ,
-                        "ndvi" : ( lambda a : (2.*(a - np.min(a))/np.ptp(a)-1).astype('f4') )  ,
-                        "pri" : (lambda a : (2. * (a - np.min(a)) / np.ptp(a) - 1).astype('f4'))  ,
+                        # "gi" : ( lambda a : (10 * (a - np.min(a)) / np.ptp(a)).astype('f4') )  , # val range 0 to 10
+                        # "gndvi" : ( lambda a : (2.*(a - np.min(a))/np.ptp(a)-1).astype('f4')  )  ,               # val range -1 to 1           
+                        # "msr" : ( lambda a : (10 * (a - np.min(a)) / np.ptp(a)).astype('f4') )  ,
+                        # "ndvi" : ( lambda a : (2.*(a - np.min(a))/np.ptp(a)-1).astype('f4') )  ,
+                        # "pri" : (lambda a : (2. * (a - np.min(a)) / np.ptp(a) - 1).astype('f4'))  ,
+                        "gi" : ( lambda a : (10 * (a - 0) / 65535).astype('f4') )  , # val range 0 to 10
+                        "gndvi" : ( lambda a : (2.*(a - 0)/ 65535 -1).astype('f4')  )  ,               # val range -1 to 1           
+                        "msr" : ( lambda a : (10 * (a - 0) / 65535).astype('f4') )  ,
+                        "ndvi" : ( lambda a : (2.*(a - 0)/ 65535 -1).astype('f4') )  ,
+                        "pri" : (lambda a : (2. * (a - 0) / 65535 - 1).astype('f4'))  ,
                         "thermal" : (lambda a :  a / 65535)  
                         }
 
@@ -195,7 +200,7 @@ if __name__ == "__main__": # so the code below is not executed during an import
                                 
                         elif parameter["zonal_statistics_run_shadows"] == 'SPECIAL':
                             zs_stats_folder = zs_stats_folder_special
-                            special_key, filter_key, shadow_val = 'zero',   'no_shadow', 0 # no shadow shapefile is from basic shadow folder
+                            #special_key, filter_key, shadow_val = 'zero',   'no_shadow', 0 # no shadow shapefile is from basic shadow folder
                             #special_key, filter_key, shadow_val = 'one',   'is_shadow', 1
                             #special_key, filter_key, shadow_val = 'two',   'is_shadow', 2
                             #special_key, filter_key, shadow_val = 'three', 'is_shadow', 3

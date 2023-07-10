@@ -74,6 +74,29 @@ def pltIndx(indx):
     plt.ylabel('Row #')
     plt.show()
 
+def pltIndxBbox(indx, offsets):
+    from matplotlib import pyplot as plt
+    print('dtype:    {}'.format(indx.dtype))
+    print('shape:    {}'.format(indx.shape))
+    print('min val:  {}'.format(indx.min()))
+    print('min mean:  {}'.format(indx.mean()))
+    print('max val:  {}'.format(indx.max()))
+    #print(f"\n{indx = }")
+
+    import matplotlib.patches as patches
+    rect = patches.Rectangle((  offsets[2], offsets[0]), 
+                                offsets[3] - offsets[2], 
+                                offsets[1] - offsets[0],
+                                linewidth=1, edgecolor='r', facecolor='none')
+    fig, ax = plt.subplots()
+    im = ax.imshow(indx, cmap='RdYlGn')
+    ax.add_patch(rect)
+    fig.colorbar(im, ax=ax)
+    plt.xlabel('Column #')
+    plt.ylabel('Row #')
+    plt.show()
+
+
 # save indices to disk
 def appendBandtoRaster(file_path, new_band):
     with rasterio.open(file_path) as src:
